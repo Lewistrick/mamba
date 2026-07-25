@@ -2,29 +2,33 @@
  * Canvas renderer for Mamba game state (retro DOS-inspired look).
  */
 
-import type { Direction, GameState, Point } from "@mamba/engine";
+import type { GameState, Point } from "@mamba/engine";
 
 const COLORS = {
   background: "#000000",
-  border: "#3a6adf",
-  hudBg: "#b01515",
+  borderOuter: "#3a6adf",
+  borderInner: "#d0d8e8",
+  hudBar: "#1e4aad",
+  hudBadge: "#c41e1e",
   hudText: "#f0d000",
-  hudMuted: "#8ec8ff",
-  snake: "#f0d000",
-  snakeFace: "#101010",
-  wall: "#a01818",
-  wallHatch: "#c44a4a",
-  blue: "#3a8cff",
-  green: "#33cc44",
+  hudMuted: "#ffffff",
+  snake: "#f0c800",
+  snakeDark: "#101010",
+  wall: "#8b1515",
+  wallHatch: "#d44a4a",
+  blue: "#3ac0ff",
+  green: "#2ee04a",
   yellow: "#f0d000",
   overlay: "rgba(0, 0, 0, 0.72)",
   white: "#f5f5f5",
 } as const;
 
-const CELL = 16;
-const HUD_H = 28;
-const PAD = 12;
-const FOOTER_H = 36;
+/** Cell size in CSS pixels (larger than Phase 1 default for readability). */
+const CELL = 28;
+const HUD_H = 40;
+const PAD = 16;
+const FOOTER_H = 40;
+const GAP = 1;
 
 /**
  * Draws the full game frame including HUD, field, and overlays.
@@ -52,8 +56,8 @@ export class Renderer {
    * @param height - Field height in cells.
    */
   resize(width: number, height: number): void {
-    this.canvas.width = PAD * 2 + width * CELL + 4;
-    this.canvas.height = HUD_H + PAD * 2 + height * CELL + 4 + FOOTER_H;
+    this.canvas.width = PAD * 2 + width * CELL + 8;
+    this.canvas.height = HUD_H + PAD * 2 + height * CELL + 8 + FOOTER_H;
   }
 
   /**
@@ -77,7 +81,7 @@ export class Renderer {
     this.drawHud(
       state?.score ?? 0,
       state?.bluePellets.length ?? 0,
-      state?.greenValue ?? 10,
+      state?.level ?? 1,
     );
 
     if (state === null) {
@@ -96,36 +100,57 @@ export class Renderer {
   }
 
   /**
-   * Draws the top status bar.
+   * Draws the top status bar (title, blue count, level, score).
    */
-  private drawHud(score: number, blueCount: number, greenValue: number): void {
+  private drawHud(score: number, blueCount: number, level: number): void {
     const { ctx, canvas } = this;
-    ctx.fillStyle = COLORS.hudBg;
+    ctx.fillStyle = COLORS.hudBar;
     ctx.fillRect(0, 0, canvas.width, HUD_H);
 
-    ctx.font = "bold 14px 'IBM Plex Mono', monospace";
-    ctx.textBaseline = "middle";
     const cy = HUD_H / 2;
+    ctx.textBaseline = "middle";
 
+    // Title badge
+    ctx.fillStyle = COLORS.hudBadge;
+    ctx.fillRect(8, 6, 78, HUD_H - 12);
     ctx.fillStyle = COLORS.hudText;
-    ctx.fillText("MAMBA", 10, cy);
+    ctx.font = "bold 18px 'IBM Plex Mono', monospace";
+    ctx.fillText("MAMBA", 16, cy);
 
-    ctx.font = "12px 'IBM Plex Mono', monospace";
+    ctx.font = "13px 'IBM Plex Mono', monospace";
     ctx.fillStyle = COLORS.hudMuted;
-    ctx.fillText("(c) 1989, Bert Uffen, Amsterdam", 78, cy);
+    ctx.fillText("(c) 1989, Bert Uffen, Amsterdam", 98, cy);
 
-    const right = canvas.width - 10;
+    const right = canvas.width - 12;
     ctx.textAlign = "right";
-    ctx.fillStyle = COLORS.hudText;
-    ctx.fillText(`Score : ${score}`, right, cy);
 
-    ctx.fillStyle = COLORS.green;
-    ctx.fillText(`** = ${greenValue}`, right - 130, cy);
+    this.drawHudStat(right, cy, `Score : ${score}`);
+    this.drawHudStat(right - 160, cy, `Level : ${level}`);
 
     ctx.fillStyle = COLORS.blue;
-    ctx.fillText(`@@ = ${blueCount}`, right - 210, cy);
+    ctx.font = "bold 14px 'IBM Plex Mono', monospace";
+    ctx.fillText("@@", right - 300, cy);
+    ctx.fillStyle = COLORS.hudBadge;
+    ctx.fillRect(right - 285, 8, 36, HUD_H - 16);
+    ctx.fillStyle = COLORS.hudText;
+    ctx.textAlign = "center";
+    ctx.fillText(String(blueCount), right - 267, cy);
 
     ctx.textAlign = "left";
+  }
+
+  /**
+   * Draws a yellow-on-red HUD value chip.
+   */
+  private drawHudStat(rightEdge: number, cy: number, label: string): void {
+    const { ctx } = this;
+    ctx.font = "13px 'IBM Plex Mono', monospace";
+    const width = ctx.measureText(label).width + 14;
+    ctx.fillStyle = COLORS.hudBadge;
+    ctx.fillRect(rightEdge - width, 8, width, HUD_H - 16);
+    ctx.fillStyle = COLORS.hudText;
+    ctx.textAlign = "right";
+    ctx.fillText(label, rightEdge - 7, cy);
   }
 
   /**
@@ -159,99 +184,89 @@ export class Renderer {
       this.drawTextCell(origin, p, "**", COLORS.green);
     }
     if (state.yellowPellet) {
-      this.fillCell(origin, state.yellowPellet.pos, COLORS.yellow);
+      this.fillBlock(origin, state.yellowPellet.pos, COLORS.yellow);
     }
 
     this.drawSnake(origin, state);
   }
 
   /**
-   * Draws the snake with a smiley head and `<<` / `>>` style tail.
+   * Draws the snake: solid yellow blocks, ☺ head, chevron tail.
    */
   private drawSnake(origin: Point, state: GameState): void {
-    const { snake, direction } = state;
+    const { snake } = state;
     if (snake.length === 0) {
       return;
     }
 
-    for (let i = 1; i < snake.length - 1; i += 1) {
-      this.fillCell(origin, snake[i], COLORS.snake);
+    // Body (excluding head and tail tip when length > 1)
+    const bodyEnd = snake.length > 1 ? snake.length - 1 : snake.length;
+    for (let i = 1; i < bodyEnd; i += 1) {
+      this.fillBlock(origin, snake[i], COLORS.snake);
     }
 
     if (snake.length > 1) {
       const tail = snake[snake.length - 1];
       const before = snake[snake.length - 2];
-      const glyph = tailGlyph(before, tail);
-      this.drawTextCell(origin, tail, glyph, COLORS.snake);
+      this.fillBlock(origin, tail, COLORS.snake);
+      this.drawTextCell(origin, tail, tailGlyph(before, tail), COLORS.snakeDark);
     }
 
     const head = snake[0];
-    this.fillCell(origin, head, COLORS.snake);
-    this.drawFace(origin, head, direction);
+    this.fillBlock(origin, head, COLORS.snake);
+    this.drawTextCell(origin, head, "☺", COLORS.snakeDark);
   }
 
   /**
-   * Draws a simple face on the head cell.
-   */
-  private drawFace(origin: Point, head: Point, direction: Direction): void {
-    const { ctx } = this;
-    const x = origin.x + head.x * CELL;
-    const y = origin.y + head.y * CELL;
-    ctx.fillStyle = COLORS.snakeFace;
-
-    const eyeY = y + 5;
-    let leftX = x + 4;
-    let rightX = x + 10;
-    if (direction === "Left") {
-      leftX = x + 3;
-      rightX = x + 9;
-    } else if (direction === "Right") {
-      leftX = x + 5;
-      rightX = x + 11;
-    }
-
-    ctx.fillRect(leftX, eyeY, 2, 2);
-    ctx.fillRect(rightX, eyeY, 2, 2);
-    ctx.fillRect(x + 5, y + 10, 6, 2);
-  }
-
-  /**
-   * Fills a wall cell with a hatched red pattern.
+   * Fills a wall cell with a hatched red pattern, clipped to the cell.
    */
   private drawWall(origin: Point, p: Point): void {
     const { ctx } = this;
     const x = origin.x + p.x * CELL;
     const y = origin.y + p.y * CELL;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, CELL, CELL);
+    ctx.clip();
+
     ctx.fillStyle = COLORS.wall;
     ctx.fillRect(x, y, CELL, CELL);
+
     ctx.strokeStyle = COLORS.wallHatch;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    for (let i = -CELL; i < CELL * 2; i += 4) {
+    for (let i = -CELL; i <= CELL * 2; i += 5) {
       ctx.moveTo(x + i, y);
       ctx.lineTo(x + i + CELL, y + CELL);
     }
     ctx.stroke();
+    ctx.restore();
   }
 
   /**
-   * Fills a solid cell.
+   * Fills a nearly full cell block (1px gap for a tiled DOS look).
    */
-  private fillCell(origin: Point, p: Point, color: string): void {
+  private fillBlock(origin: Point, p: Point, color: string): void {
     const { ctx } = this;
     ctx.fillStyle = color;
-    ctx.fillRect(origin.x + p.x * CELL, origin.y + p.y * CELL, CELL, CELL);
+    ctx.fillRect(
+      origin.x + p.x * CELL + GAP,
+      origin.y + p.y * CELL + GAP,
+      CELL - GAP * 2,
+      CELL - GAP * 2,
+    );
   }
 
   /**
-   * Draws a two-character glyph centered in a cell.
+   * Draws a glyph centered in a cell.
    */
   private drawTextCell(origin: Point, p: Point, text: string, color: string): void {
     const { ctx } = this;
     const x = origin.x + p.x * CELL + CELL / 2;
-    const y = origin.y + p.y * CELL + CELL / 2;
+    const y = origin.y + p.y * CELL + CELL / 2 + 1;
     ctx.fillStyle = color;
-    ctx.font = "bold 12px 'IBM Plex Mono', monospace";
+    ctx.font = `bold ${Math.floor(CELL * 0.72)}px 'IBM Plex Mono', monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y);
@@ -259,15 +274,16 @@ export class Renderer {
   }
 
   /**
-   * Draws a double-line blue border around the field.
+   * Draws a double-line border around the field.
    */
   private strokeBorder(x: number, y: number, w: number, h: number): void {
     const { ctx } = this;
-    ctx.strokeStyle = COLORS.border;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.strokeStyle = COLORS.borderOuter;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
+    ctx.strokeStyle = COLORS.borderInner;
     ctx.lineWidth = 1;
-    ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
   }
 
   /**
@@ -276,12 +292,12 @@ export class Renderer {
   private drawFooter(): void {
     const { ctx, canvas } = this;
     const y = canvas.height - FOOTER_H + 14;
-    ctx.font = "11px 'IBM Plex Mono', monospace";
-    ctx.fillStyle = COLORS.border;
+    ctx.font = "12px 'IBM Plex Mono', monospace";
+    ctx.fillStyle = COLORS.borderOuter;
     ctx.textAlign = "center";
     ctx.fillText("Original game by Bert Uffen · Remake in progress", canvas.width / 2, y);
     ctx.fillStyle = COLORS.white;
-    ctx.fillText("Phase 1 — single player", canvas.width / 2, y + 14);
+    ctx.fillText("Phase 1 — single player", canvas.width / 2, y + 16);
     ctx.textAlign = "left";
   }
 
@@ -295,21 +311,21 @@ export class Renderer {
 
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.hudText;
-    ctx.font = "bold 28px 'IBM Plex Mono', monospace";
+    ctx.font = "bold 36px 'IBM Plex Mono', monospace";
     const cx = canvas.width / 2;
     const cy = canvas.height / 2 - 10;
 
     if (kind === "start") {
-      ctx.fillText("MAMBA", cx, cy - 16);
-      ctx.font = "14px 'IBM Plex Mono', monospace";
+      ctx.fillText("MAMBA", cx, cy - 20);
+      ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      ctx.fillText("Press Enter or Space to start", cx, cy + 16);
+      ctx.fillText("Press Enter or Space to start", cx, cy + 20);
     } else {
-      ctx.fillText("GAME OVER", cx, cy - 16);
-      ctx.font = "14px 'IBM Plex Mono', monospace";
+      ctx.fillText("GAME OVER", cx, cy - 20);
+      ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      ctx.fillText(`Score: ${score}`, cx, cy + 12);
-      ctx.fillText("Press Enter or Space to play again", cx, cy + 32);
+      ctx.fillText(`Score: ${score}`, cx, cy + 16);
+      ctx.fillText("Press Enter or Space to play again", cx, cy + 40);
     }
     ctx.textAlign = "left";
   }
@@ -318,7 +334,7 @@ export class Renderer {
    * Top-left pixel of the playfield grid.
    */
   private fieldOrigin(): Point {
-    return { x: PAD + 2, y: HUD_H + PAD + 2 };
+    return { x: PAD + 4, y: HUD_H + PAD + 4 };
   }
 }
 

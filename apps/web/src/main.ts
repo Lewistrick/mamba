@@ -57,6 +57,9 @@ function onKeyDown(event: KeyboardEvent): void {
   const dir = KEY_TO_DIR[event.key];
   if (dir && game && screen === "playing") {
     event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
     game.queueDirection(dir);
   }
 }

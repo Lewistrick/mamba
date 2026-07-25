@@ -299,4 +299,34 @@ describe("Game", () => {
     game.tick();
     expect(game.getState().status).toBe("gameover");
   });
+
+  it("buffers two turns so a sharp corner works within one tick gap", () => {
+    const game = Game.medium(7);
+    patchGame(game, {
+      snake: [
+        { x: 5, y: 5 },
+        { x: 4, y: 5 },
+        { x: 3, y: 5 },
+        { x: 2, y: 5 },
+        { x: 1, y: 5 },
+      ],
+      direction: "Right",
+      bluePellets: [],
+      greenPellets: [],
+      walls: [],
+      moltThreshold: 99,
+    });
+
+    // Going right: queue up then left before the next tick.
+    game.queueDirection("Up");
+    game.queueDirection("Left");
+
+    const afterFirst = game.tick();
+    expect(afterFirst.direction).toBe("Up");
+    expect(afterFirst.snake[0]).toEqual({ x: 5, y: 4 });
+
+    const afterSecond = game.tick();
+    expect(afterSecond.direction).toBe("Left");
+    expect(afterSecond.snake[0]).toEqual({ x: 4, y: 4 });
+  });
 });

@@ -95,7 +95,7 @@ export class Game {
   private readonly rng: () => number;
   private snake: Point[] = [];
   private direction: Direction = "Right";
-  private queuedDirection: Direction | null = null;
+  private inputQueue: Direction[] = [];
   private walls = new Set<string>();
   private bluePellets = new Set<string>();
   private greenPellets = new Set<string>();
@@ -133,7 +133,8 @@ export class Game {
   }
 
   /**
-   * Queues a direction change for the next tick (ignores 180° reverses).
+   * Queues up to two upcoming direction changes (for quick cornering).
+   * Ignores 180° reverses relative to the current heading or last queued turn.
    *
    * @param dir - Requested direction.
    */
@@ -141,10 +142,23 @@ export class Game {
     if (this.status !== "playing") {
       return;
     }
-    if (dir === OPPOSITE[this.direction]) {
+
+    const baseline =
+      this.inputQueue.length > 0
+        ? this.inputQueue[this.inputQueue.length - 1]
+        : this.direction;
+
+    if (dir === baseline || dir === OPPOSITE[baseline]) {
       return;
     }
-    this.queuedDirection = dir;
+
+    if (this.inputQueue.length < 2) {
+      this.inputQueue.push(dir);
+      return;
+    }
+
+    // Replace the second buffered turn so the latest intent wins.
+    this.inputQueue[1] = dir;
   }
 
   /**
@@ -159,11 +173,11 @@ export class Game {
 
     this.tickCount += 1;
 
-    if (this.queuedDirection !== null) {
-      if (this.queuedDirection !== OPPOSITE[this.direction]) {
-        this.direction = this.queuedDirection;
+    if (this.inputQueue.length > 0) {
+      const nextDir = this.inputQueue.shift()!;
+      if (nextDir !== OPPOSITE[this.direction]) {
+        this.direction = nextDir;
       }
-      this.queuedDirection = null;
     }
 
     this.decayYellow();
@@ -241,7 +255,7 @@ export class Game {
       this.snake.push({ x: cx - i, y: cy });
     }
     this.direction = "Right";
-    this.queuedDirection = null;
+    this.inputQueue = [];
   }
 
   /**
