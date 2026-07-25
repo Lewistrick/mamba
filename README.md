@@ -4,21 +4,22 @@ A TypeScript + HTML5 Canvas remake of **Mamba**, the 1989 MS-DOS snake game by B
 
 Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds most of its body into a permanent red wall, keeps the newest five segments, and a timed yellow bonus pellet appears. Pellets that would spawn on a wall become valuable green pellets instead.
 
-## Phase 1 (current)
+## Current (Phase 2)
 
 - Deterministic headless engine (`packages/engine`)
-- Medium field only (`40×22`), start length 5
-- Blue (`@@`), green (`**`), and yellow (`██`) pellets
-- Molting, wall collisions, self collisions
-- Canvas client with arrow-key controls
+- Field sizes: Small `11×20`, Medium `22×40`, Large `33×60` (height × width)
+- HTML menu beside the canvas (size select, sound toggle, Play)
+- Live board rescale to fit the viewport
+- Constant speed; Web Audio pellet / molt / death beeps
+- Last board size + sound preference remembered in `localStorage`
 
-Later phases (field sizes, leaderboards, AI, multiplayer) are outlined in the project plan.
+Later phases (leaderboards, AI, multiplayer) are in [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md).
 
 ## Rules (Phase 1)
 
 | Rule | Detail |
 |------|--------|
-| Field | Height 22, width 40 |
+| Field | Small 11×20 / Medium 22×40 / Large 33×60 (height × width) |
 | Start | Snake length 5 |
 | Move | One cell per tick; head advances, tail removed unless you just ate |
 | Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn **one** replacement |

@@ -8,8 +8,11 @@ import {
   START_LENGTH,
   YELLOW_REACTION_MAX,
   YELLOW_REACTION_MIN,
+  FIELD_SIZES,
   type Direction,
+  type FieldSizeId,
   type GameConfig,
+  type GameEvent,
   type GameState,
   type GameStatus,
   type Point,
@@ -106,6 +109,7 @@ export class Game {
   private moltThreshold = 0;
   private status: GameStatus = "playing";
   private tickCount = 0;
+  private events: GameEvent[] = [];
 
   /**
    * Creates and initializes a new game.
@@ -130,6 +134,17 @@ export class Game {
    */
   static medium(seed: number = Date.now() >>> 0): Game {
     return new Game({ ...MEDIUM_SIZE, seed });
+  }
+
+  /**
+   * Creates a game for a named field size.
+   *
+   * @param sizeId - Small, medium, or large.
+   * @param seed - Optional seed; defaults to a time-based value.
+   * @returns A new game instance.
+   */
+  static withSize(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
+    return new Game({ ...FIELD_SIZES[sizeId], seed });
   }
 
   /**
@@ -167,6 +182,8 @@ export class Game {
    * @returns Current immutable state snapshot.
    */
   tick(): GameState {
+    this.events = [];
+
     if (this.status !== "playing") {
       return this.getState();
     }
@@ -193,6 +210,7 @@ export class Game {
       this.hitsSnake(next, willGrow)
     ) {
       this.status = "gameover";
+      this.events.push({ type: "die" });
       return this.getState();
     }
 
@@ -239,6 +257,7 @@ export class Game {
       tick: this.tickCount,
       blueValue: bluePelletValue(this.level),
       greenValue: greenPelletValue(this.level),
+      events: [...this.events],
     };
   }
 
@@ -324,6 +343,7 @@ export class Game {
       this.bluePellets.delete(key(pos));
       this.score += bluePelletValue(this.level);
       this.pelletsEatenThisLife += 1;
+      this.events.push({ type: "eat_blue" });
       this.spawnPellet();
       return true;
     }
@@ -332,6 +352,7 @@ export class Game {
       this.greenPellets.delete(key(pos));
       this.score += greenPelletValue(this.level);
       this.pelletsEatenThisLife += 1;
+      this.events.push({ type: "eat_green" });
       this.spawnPellet();
       this.spawnPellet();
       return true;
@@ -339,6 +360,7 @@ export class Game {
 
     this.score += this.yellowPellet!.value;
     this.yellowPellet = null;
+    this.events.push({ type: "eat_yellow" });
     this.spawnPellet();
     this.spawnPellet();
     return true;
@@ -361,6 +383,7 @@ export class Game {
     this.level += 1;
     this.pelletsEatenThisLife = 0;
     this.moltThreshold = randomInt(this.rng, 12, 22);
+    this.events.push({ type: "molt" });
     this.spawnYellow();
   }
 

@@ -53,13 +53,42 @@ export interface GameState {
   blueValue: number;
   /** Current green pellet score award (capped). */
   greenValue: number;
+  /** Events that occurred on the tick that produced this snapshot. */
+  events: readonly GameEvent[];
 }
 
+/** Field size identifiers. */
+export type FieldSizeId = "small" | "medium" | "large";
+
+/** Playfield dimensions (height × width as used in product copy). */
+export interface FieldSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * Available field sizes. Keys match UI labels; values are width × height cells.
+ * Product notation Small 11×20 means height 11, width 20.
+ */
+export const FIELD_SIZES: Record<FieldSizeId, FieldSize> = {
+  small: { width: 20, height: 11 },
+  medium: { width: 40, height: 22 },
+  large: { width: 60, height: 33 },
+};
+
 /** Medium field size from the original game. */
-export const MEDIUM_SIZE = { width: 40, height: 22 } as const;
+export const MEDIUM_SIZE = FIELD_SIZES.medium;
 
 /** Starting snake length. */
 export const START_LENGTH = 5;
+
+/** Events emitted during a single tick (for sound / VFX). */
+export type GameEvent =
+  | { type: "eat_blue" }
+  | { type: "eat_green" }
+  | { type: "eat_yellow" }
+  | { type: "molt" }
+  | { type: "die" };
 
 /** Yellow TTL reaction factor range (ticks per Manhattan cell). */
 export const YELLOW_REACTION_MIN = 2;

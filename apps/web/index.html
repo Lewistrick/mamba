@@ -13,8 +13,39 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
-      <p class="hint">Arrow keys to move · Enter / Space to start</p>
+      <aside id="menu" aria-label="Game menu">
+        <h1>MAMBA</h1>
+        <p class="menu-sub">1989 · Bert Uffen</p>
+
+        <fieldset class="size-field">
+          <legend>Board size</legend>
+          <label
+            ><input type="radio" name="size" value="small" /> Small
+            <span>11×20</span></label
+          >
+          <label
+            ><input type="radio" name="size" value="medium" checked /> Medium
+            <span>22×40</span></label
+          >
+          <label
+            ><input type="radio" name="size" value="large" /> Large
+            <span>33×60</span></label
+          >
+        </fieldset>
+
+        <label class="sound-toggle">
+          <input type="checkbox" id="sound-enabled" checked />
+          Sound <span class="key-hint">(S)</span>
+        </label>
+
+        <button type="button" id="btn-play" class="primary">Play</button>
+        <p id="status" class="status" role="status"></p>
+        <p class="hint">Arrows to steer · S sound</p>
+      </aside>
+
+      <div id="stage">
+        <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
