@@ -21,10 +21,10 @@ Later phases (field sizes, leaderboards, AI, multiplayer) are outlined in the pr
 | Field | Height 22, width 40 |
 | Start | Snake length 5 |
 | Move | One cell per tick; head advances, tail removed unless you just ate |
-| Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn a replacement |
+| Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn **one** replacement |
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
-| Yellow pellet | Spawns on molt; worth `⌊√level × random(20–50)⌋`; TTL = Manhattan(head, pellet) × `random(2–5)` ticks |
-| Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green |
+| Yellow pellet | Spawns on molt; worth `⌊√level × random(20–50)⌋`; TTL = Manhattan(head, pellet) × `random(2–5)` ticks; eat → spawn **two** pellets |
+| Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
 | Death | Hit border, self, or red wall |
 
 Score caps follow the Wikipedia description of the original: blue max **10**, green max **100**.

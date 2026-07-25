@@ -194,7 +194,7 @@ describe("Game", () => {
     expect(state.pelletsEatenThisLife).toBe(0);
   });
 
-  it("awards capped green pellet score", () => {
+  it("awards capped green pellet score and spawns two pellets", () => {
     const game = Game.medium(3);
     patchGame(game, {
       snake: [
@@ -215,7 +215,43 @@ describe("Game", () => {
     });
 
     game.tick();
-    expect(game.getState().score).toBe(100);
+    const state = game.getState();
+    expect(state.score).toBe(100);
+    // Green removed; two replacement spawns (blue and/or green-from-wall).
+    expect(state.greenPellets.some((p) => p.x === 6 && p.y === 5)).toBe(false);
+    expect(state.bluePellets.length + state.greenPellets.length).toBe(2);
+  });
+
+  it("spawns two pellets when eating yellow", () => {
+    const game = Game.medium(8);
+    patchGame(game, {
+      snake: [
+        { x: 5, y: 5 },
+        { x: 4, y: 5 },
+        { x: 3, y: 5 },
+        { x: 2, y: 5 },
+        { x: 1, y: 5 },
+      ],
+      direction: "Right",
+      bluePellets: [],
+      greenPellets: [],
+      walls: [],
+      level: 2,
+      score: 0,
+      pelletsEatenThisLife: 0,
+      moltThreshold: 99,
+    });
+
+    const g = game as unknown as {
+      yellowPellet: { pos: Point; value: number; ttl: number } | null;
+    };
+    g.yellowPellet = { pos: { x: 6, y: 5 }, value: 40, ttl: 20 };
+
+    game.tick();
+    const state = game.getState();
+    expect(state.score).toBe(40);
+    expect(state.yellowPellet).toBeNull();
+    expect(state.bluePellets.length + state.greenPellets.length).toBe(2);
   });
 
   it("expires yellow pellets after TTL ticks", () => {

@@ -2,7 +2,7 @@
  * Canvas renderer for Mamba game state (retro DOS-inspired look).
  */
 
-import type { GameState, Point } from "@mamba/engine";
+import type { Direction, GameState, Point } from "@mamba/engine";
 
 const COLORS = {
   background: "#000000",
@@ -23,7 +23,7 @@ const COLORS = {
   white: "#f5f5f5",
 } as const;
 
-/** Cell size in CSS pixels (larger than Phase 1 default for readability). */
+/** Logical cell size in CSS pixels. */
 const CELL = 28;
 const HUD_H = 40;
 const PAD = 16;
@@ -36,6 +36,7 @@ const GAP = 1;
 export class Renderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
+  private sizedFor: { width: number; height: number; dpr: number } | null = null;
 
   /**
    * @param canvas - Target canvas element.
@@ -50,14 +51,46 @@ export class Renderer {
   }
 
   /**
-   * Resizes the canvas to fit a given field size.
+   * Ensures the canvas backing store matches the field size and device pixel ratio.
+   * Skips work when nothing changed (avoids clearing fonts every frame).
    *
    * @param width - Field width in cells.
    * @param height - Field height in cells.
    */
   resize(width: number, height: number): void {
-    this.canvas.width = PAD * 2 + width * CELL + 8;
-    this.canvas.height = HUD_H + PAD * 2 + height * CELL + 8 + FOOTER_H;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (
+      this.sizedFor !== null &&
+      this.sizedFor.width === width &&
+      this.sizedFor.height === height &&
+      this.sizedFor.dpr === dpr
+    ) {
+      return;
+    }
+
+    this.sizedFor = { width, height, dpr };
+    const cssW = PAD * 2 + width * CELL + 8;
+    const cssH = HUD_H + PAD * 2 + height * CELL + 8 + FOOTER_H;
+
+    this.canvas.style.width = `${cssW}px`;
+    this.canvas.style.height = `${cssH}px`;
+    this.canvas.width = Math.round(cssW * dpr);
+    this.canvas.height = Math.round(cssH * dpr);
+
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = true;
+  }
+
+  /**
+   * Logical (CSS-pixel) canvas size used for layout math.
+   */
+  private get logicalSize(): { width: number; height: number } {
+    const width = this.sizedFor?.width ?? 40;
+    const height = this.sizedFor?.height ?? 22;
+    return {
+      width: PAD * 2 + width * CELL + 8,
+      height: HUD_H + PAD * 2 + height * CELL + 8 + FOOTER_H,
+    };
   }
 
   /**
@@ -70,13 +103,15 @@ export class Renderer {
     state: GameState | null,
     overlay: "start" | "gameover" | null = null,
   ): void {
-    const { ctx, canvas } = this;
     const width = state?.width ?? 40;
     const height = state?.height ?? 22;
     this.resize(width, height);
 
+    const { ctx } = this;
+    const { width: cssW, height: cssH } = this.logicalSize;
+
     ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, cssW, cssH);
 
     this.drawHud(
       state?.score ?? 0,
@@ -103,14 +138,14 @@ export class Renderer {
    * Draws the top status bar (title, blue count, level, score).
    */
   private drawHud(score: number, blueCount: number, level: number): void {
-    const { ctx, canvas } = this;
+    const { ctx } = this;
+    const { width: cssW } = this.logicalSize;
     ctx.fillStyle = COLORS.hudBar;
-    ctx.fillRect(0, 0, canvas.width, HUD_H);
+    ctx.fillRect(0, 0, cssW, HUD_H);
 
-    const cy = HUD_H / 2;
+    const cy = Math.round(HUD_H / 2);
     ctx.textBaseline = "middle";
 
-    // Title badge
     ctx.fillStyle = COLORS.hudBadge;
     ctx.fillRect(8, 6, 78, HUD_H - 12);
     ctx.fillStyle = COLORS.hudText;
@@ -121,14 +156,13 @@ export class Renderer {
     ctx.fillStyle = COLORS.hudMuted;
     ctx.fillText("(c) 1989, Bert Uffen, Amsterdam", 98, cy);
 
-    const right = canvas.width - 12;
-    ctx.textAlign = "right";
-
+    const right = cssW - 12;
     this.drawHudStat(right, cy, `Score : ${score}`);
     this.drawHudStat(right - 160, cy, `Level : ${level}`);
 
     ctx.fillStyle = COLORS.blue;
     ctx.font = "bold 14px 'IBM Plex Mono', monospace";
+    ctx.textAlign = "right";
     ctx.fillText("@@", right - 300, cy);
     ctx.fillStyle = COLORS.hudBadge;
     ctx.fillRect(right - 285, 8, 36, HUD_H - 16);
@@ -145,7 +179,7 @@ export class Renderer {
   private drawHudStat(rightEdge: number, cy: number, label: string): void {
     const { ctx } = this;
     ctx.font = "13px 'IBM Plex Mono', monospace";
-    const width = ctx.measureText(label).width + 14;
+    const width = Math.ceil(ctx.measureText(label).width) + 14;
     ctx.fillStyle = COLORS.hudBadge;
     ctx.fillRect(rightEdge - width, 8, width, HUD_H - 16);
     ctx.fillStyle = COLORS.hudText;
@@ -191,15 +225,14 @@ export class Renderer {
   }
 
   /**
-   * Draws the snake: solid yellow blocks, ☺ head, chevron tail.
+   * Draws preset 1 snake: gapped tiles, pixel smiley head, chevron tail.
    */
   private drawSnake(origin: Point, state: GameState): void {
-    const { snake } = state;
+    const { snake, direction } = state;
     if (snake.length === 0) {
       return;
     }
 
-    // Body (excluding head and tail tip when length > 1)
     const bodyEnd = snake.length > 1 ? snake.length - 1 : snake.length;
     for (let i = 1; i < bodyEnd; i += 1) {
       this.fillBlock(origin, snake[i], COLORS.snake);
@@ -209,12 +242,89 @@ export class Renderer {
       const tail = snake[snake.length - 1];
       const before = snake[snake.length - 2];
       this.fillBlock(origin, tail, COLORS.snake);
-      this.drawTextCell(origin, tail, tailGlyph(before, tail), COLORS.snakeDark);
+      this.drawChevronTail(origin, tail, before);
     }
 
     const head = snake[0];
     this.fillBlock(origin, head, COLORS.snake);
-    this.drawTextCell(origin, head, "☺", COLORS.snakeDark);
+    this.drawSmileyHead(origin, head, direction);
+  }
+
+  /**
+   * Draws a classic two-eye + mouth face with pixels (no Unicode).
+   */
+  private drawSmileyHead(origin: Point, head: Point, direction: Direction): void {
+    const { ctx } = this;
+    const x = origin.x + head.x * CELL + GAP;
+    const y = origin.y + head.y * CELL + GAP;
+    const size = CELL - GAP * 2;
+
+    ctx.fillStyle = COLORS.snakeDark;
+
+    // Eyes
+    const eyeY = y + Math.floor(size * 0.28);
+    const eyeSize = Math.max(2, Math.floor(size * 0.12));
+    let leftEyeX = x + Math.floor(size * 0.22);
+    let rightEyeX = x + Math.floor(size * 0.62);
+    if (direction === "Left") {
+      leftEyeX = x + Math.floor(size * 0.16);
+      rightEyeX = x + Math.floor(size * 0.56);
+    } else if (direction === "Right") {
+      leftEyeX = x + Math.floor(size * 0.28);
+      rightEyeX = x + Math.floor(size * 0.68);
+    }
+
+    ctx.fillRect(leftEyeX, eyeY, eyeSize, eyeSize);
+    ctx.fillRect(rightEyeX, eyeY, eyeSize, eyeSize);
+
+    // Mouth
+    const mouthY = y + Math.floor(size * 0.62);
+    const mouthW = Math.floor(size * 0.4);
+    const mouthX = x + Math.floor((size - mouthW) / 2);
+    ctx.fillRect(mouthX, mouthY, mouthW, Math.max(2, Math.floor(size * 0.1)));
+  }
+
+  /**
+   * Draws a geometric chevron tail (not font text).
+   */
+  private drawChevronTail(origin: Point, tail: Point, before: Point): void {
+    const { ctx } = this;
+    const x = origin.x + tail.x * CELL + GAP;
+    const y = origin.y + tail.y * CELL + GAP;
+    const size = CELL - GAP * 2;
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const arm = size * 0.22;
+
+    let dx = 0;
+    let dy = 0;
+    if (before.x < tail.x) {
+      dx = -1;
+    } else if (before.x > tail.x) {
+      dx = 1;
+    } else if (before.y < tail.y) {
+      dy = -1;
+    } else {
+      dy = 1;
+    }
+
+    ctx.fillStyle = COLORS.snakeDark;
+    for (const offset of [-arm * 0.55, arm * 0.15]) {
+      ctx.beginPath();
+      if (dx !== 0) {
+        const tipX = cx + dx * (arm + offset);
+        ctx.moveTo(tipX, cy);
+        ctx.lineTo(tipX - dx * arm, cy - arm * 0.7);
+        ctx.lineTo(tipX - dx * arm, cy + arm * 0.7);
+      } else {
+        const tipY = cy + dy * (arm + offset);
+        ctx.moveTo(cx, tipY);
+        ctx.lineTo(cx - arm * 0.7, tipY - dy * arm);
+        ctx.lineTo(cx + arm * 0.7, tipY - dy * arm);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   /**
@@ -259,14 +369,14 @@ export class Renderer {
   }
 
   /**
-   * Draws a glyph centered in a cell.
+   * Draws a glyph centered in a cell (pellets only).
    */
   private drawTextCell(origin: Point, p: Point, text: string, color: string): void {
     const { ctx } = this;
-    const x = origin.x + p.x * CELL + CELL / 2;
-    const y = origin.y + p.y * CELL + CELL / 2 + 1;
+    const x = Math.round(origin.x + p.x * CELL + CELL / 2);
+    const y = Math.round(origin.y + p.y * CELL + CELL / 2);
     ctx.fillStyle = color;
-    ctx.font = `bold ${Math.floor(CELL * 0.72)}px 'IBM Plex Mono', monospace`;
+    ctx.font = `bold ${Math.floor(CELL * 0.65)}px 'IBM Plex Mono', monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y);
@@ -290,14 +400,15 @@ export class Renderer {
    * Draws credit footer text.
    */
   private drawFooter(): void {
-    const { ctx, canvas } = this;
-    const y = canvas.height - FOOTER_H + 14;
+    const { ctx } = this;
+    const { width: cssW, height: cssH } = this.logicalSize;
+    const y = cssH - FOOTER_H + 14;
     ctx.font = "12px 'IBM Plex Mono', monospace";
     ctx.fillStyle = COLORS.borderOuter;
     ctx.textAlign = "center";
-    ctx.fillText("Original game by Bert Uffen · Remake in progress", canvas.width / 2, y);
+    ctx.fillText("Original game by Bert Uffen · Remake in progress", Math.round(cssW / 2), y);
     ctx.fillStyle = COLORS.white;
-    ctx.fillText("Phase 1 — single player", canvas.width / 2, y + 16);
+    ctx.fillText("Phase 1 — single player", Math.round(cssW / 2), y + 16);
     ctx.textAlign = "left";
   }
 
@@ -305,15 +416,16 @@ export class Renderer {
    * Draws a start or game-over overlay.
    */
   private drawOverlay(kind: "start" | "gameover", score: number): void {
-    const { ctx, canvas } = this;
+    const { ctx } = this;
+    const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
-    ctx.fillRect(0, HUD_H, canvas.width, canvas.height - HUD_H - FOOTER_H);
+    ctx.fillRect(0, HUD_H, cssW, cssH - HUD_H - FOOTER_H);
 
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.hudText;
     ctx.font = "bold 36px 'IBM Plex Mono', monospace";
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2 - 10;
+    const cx = Math.round(cssW / 2);
+    const cy = Math.round(cssH / 2) - 10;
 
     if (kind === "start") {
       ctx.fillText("MAMBA", cx, cy - 20);
@@ -336,24 +448,4 @@ export class Renderer {
   private fieldOrigin(): Point {
     return { x: PAD + 4, y: HUD_H + PAD + 4 };
   }
-}
-
-/**
- * Chooses a tail glyph based on the segment before the tip.
- *
- * @param before - Segment closer to the head.
- * @param tail - Tail tip.
- * @returns ASCII-ish tail marker.
- */
-function tailGlyph(before: Point, tail: Point): string {
-  if (before.x < tail.x) {
-    return "<<";
-  }
-  if (before.x > tail.x) {
-    return ">>";
-  }
-  if (before.y < tail.y) {
-    return "^^";
-  }
-  return "vv";
 }

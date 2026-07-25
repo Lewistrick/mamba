@@ -332,11 +332,15 @@ export class Game {
       this.greenPellets.delete(key(pos));
       this.score += greenPelletValue(this.level);
       this.pelletsEatenThisLife += 1;
+      this.spawnPellet();
+      this.spawnPellet();
       return true;
     }
 
     this.score += this.yellowPellet!.value;
     this.yellowPellet = null;
+    this.spawnPellet();
+    this.spawnPellet();
     return true;
   }
 
