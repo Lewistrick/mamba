@@ -1,0 +1,16 @@
+{
+  "name": "mamba",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @mamba/web",
+    "build": "npm run build -w @mamba/engine && npm run build -w @mamba/web",
+    "test": "npm run test -w @mamba/engine",
+    "preview": "npm run preview -w @mamba/web"
+  }
+}

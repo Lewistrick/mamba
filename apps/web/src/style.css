@@ -1,0 +1,56 @@
+:root {
+  --bg: #050508;
+  --panel: #0a0a12;
+  --text: #c8d0e0;
+  --muted: #6a7a9a;
+  --accent-red: #c41e1e;
+  --accent-yellow: #f0d000;
+  --accent-blue: #3a8cff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse at 50% 0%, #12122a 0%, transparent 55%),
+    linear-gradient(180deg, #07070c 0%, #050508 100%);
+  color: var(--text);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#game {
+  display: block;
+  max-width: min(96vw, 960px);
+  height: auto;
+  background: #000;
+  box-shadow:
+    0 0 0 1px #1a2a4a,
+    0 12px 40px rgba(0, 0, 0, 0.55);
+  image-rendering: pixelated;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
