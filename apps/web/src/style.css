@@ -238,14 +238,19 @@ body {
   gap: 0.45rem;
 }
 
+.auth-form[hidden],
+.auth-confirm[hidden],
+.auth-panel[hidden],
+.gameover-overlay[hidden],
+.guest-score-form[hidden],
+#account-username-label[hidden] {
+  display: none !important;
+}
+
 .auth-confirm {
   margin: 0;
   font-size: 0.75rem;
   color: var(--accent-blue);
-}
-
-.auth-confirm[hidden] {
-  display: none;
 }
 
 #btn-play:disabled {

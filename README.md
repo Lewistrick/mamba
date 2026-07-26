@@ -46,7 +46,7 @@ Open the URL Vite prints (default `http://localhost:5173`).
 Optional. Without config, everything works offline.
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Apply [`supabase/migrations/20260726150000_profiles_scores.sql`](supabase/migrations/20260726150000_profiles_scores.sql)
+2. Apply the database schema: open **SQL Editor**, paste [`supabase/setup.sql`](supabase/setup.sql), run it once
 3. `npm run sync:engine` then deploy `supabase/functions/verify-score`
 4. Copy [`apps/web/.env.example`](apps/web/.env.example) to `apps/web/.env.local` and set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
 5. Add `http://localhost:5173` to Auth redirect URLs

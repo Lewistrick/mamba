@@ -133,10 +133,28 @@ export async function setAccountUsername(displayName: string): Promise<{ error: 
   if (!name) {
     return { error: "Name required" };
   }
-  const { error } = await supabase
-    .from("profiles")
-    .update({ display_name: name, username_set: true })
-    .eq("id", user.id)
-    .eq("username_set", false);
-  return { error: error?.message ?? null };
+
+  const existing = await fetchProfile();
+  if (existing?.usernameSet) {
+    return { error: "Username already set" };
+  }
+
+  // Upsert so accounts created before the profiles table/trigger still work.
+  const { error } = await supabase.from("profiles").upsert(
+    {
+      id: user.id,
+      display_name: name,
+      username_set: true,
+    },
+    { onConflict: "id" },
+  );
+  if (error) {
+    if (/schema cache|profiles/i.test(error.message) || error.code === "PGRST205") {
+      return {
+        error: "Profiles table missing — run supabase/setup.sql in the Supabase SQL editor",
+      };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
 }

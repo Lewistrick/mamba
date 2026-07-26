@@ -306,8 +306,13 @@ async function refreshLeaderboard(): Promise<void> {
  * Updates auth panel visibility and labels.
  */
 async function refreshAuthUi(): Promise<void> {
+  // Always reset forms first so CSS/state can't leave the wrong one visible.
   authConfirmEl.hidden = true;
   authConfirmEl.textContent = "";
+  authFormEl.hidden = true;
+  usernameFormEl.hidden = true;
+  accountUsernameLabelEl.hidden = true;
+  signOutEl.hidden = true;
 
   if (!supabaseConfigured) {
     authEl.hidden = true;
@@ -322,25 +327,31 @@ async function refreshAuthUi(): Promise<void> {
   signedInEmail = session?.user.email ?? null;
   profile = signedInEmail ? await fetchProfile() : null;
 
-  if (signedInEmail) {
-    authStatusEl.textContent = signedInEmail;
-    authFormEl.hidden = true;
-    signOutEl.hidden = false;
-    if (profile?.usernameSet) {
-      usernameFormEl.hidden = true;
-      accountUsernameLabelEl.hidden = false;
-      accountUsernameLabelEl.textContent = `Username: ${profile.displayName}`;
-    } else {
-      usernameFormEl.hidden = false;
-      accountUsernameLabelEl.hidden = true;
-      accountUsernameEl.value = "";
-    }
-  } else {
+  if (!signedInEmail) {
     authStatusEl.textContent = "Guest — local scores only";
     authFormEl.hidden = false;
-    signOutEl.hidden = true;
-    usernameFormEl.hidden = true;
-    accountUsernameLabelEl.hidden = true;
+    syncPlayButton();
+    return;
+  }
+
+  authStatusEl.textContent = signedInEmail;
+  signOutEl.hidden = false;
+
+  if (!profile) {
+    authConfirmEl.hidden = false;
+    authConfirmEl.style.color = "var(--accent-red)";
+    authConfirmEl.textContent =
+      "Database not set up yet. Run supabase/setup.sql in the Supabase SQL editor.";
+    syncPlayButton();
+    return;
+  }
+
+  if (profile.usernameSet) {
+    accountUsernameLabelEl.hidden = false;
+    accountUsernameLabelEl.textContent = `Username: ${profile.displayName}`;
+  } else {
+    usernameFormEl.hidden = false;
+    accountUsernameEl.value = "";
   }
 
   syncPlayButton();
