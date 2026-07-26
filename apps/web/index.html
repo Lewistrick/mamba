@@ -49,24 +49,25 @@
               <input id="auth-email" type="email" autocomplete="email" required />
             </label>
             <button type="submit" id="btn-magic-link" class="secondary">Email magic link</button>
+            <p id="auth-confirm" class="auth-confirm" hidden></p>
           </form>
+          <form id="username-form" class="auth-form" hidden>
+            <p class="hint">Choose a username before you play (locked afterward).</p>
+            <label class="name-label">
+              Username
+              <input
+                id="account-username"
+                type="text"
+                maxlength="12"
+                autocomplete="nickname"
+                spellcheck="false"
+                required
+              />
+            </label>
+            <button type="submit" class="secondary">Save username</button>
+          </form>
+          <p id="account-username-label" class="auth-status" hidden></p>
           <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
-        </section>
-
-        <section id="highscore-panel" class="highscore-panel" hidden>
-          <h2>High score!</h2>
-          <label class="name-label">
-            Name
-            <input
-              id="player-name"
-              type="text"
-              maxlength="12"
-              autocomplete="nickname"
-              spellcheck="false"
-            />
-          </label>
-          <button type="button" id="btn-save-score" class="secondary">Save score</button>
-          <p id="global-save-hint" class="hint" hidden>Signed in — also submits to the global board</p>
         </section>
 
         <section class="leaderboard" aria-label="Leaderboard">
@@ -93,7 +94,27 @@
       </aside>
 
       <div id="stage">
-        <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
+        <div id="playfield" class="playfield">
+          <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
+          <div id="gameover-overlay" class="gameover-overlay" hidden>
+            <p class="go-title">GAME OVER</p>
+            <p id="go-score" class="go-score">Score: 0</p>
+            <form id="guest-score-form" class="guest-score-form">
+              <label class="name-label">
+                Name
+                <input
+                  id="guest-name"
+                  type="text"
+                  maxlength="12"
+                  autocomplete="nickname"
+                  spellcheck="false"
+                />
+              </label>
+              <button type="submit" class="primary">Save score</button>
+            </form>
+            <button type="button" id="btn-play-again" class="secondary">Play again</button>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

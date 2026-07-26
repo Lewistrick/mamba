@@ -1,5 +1,5 @@
 /**
- * Mamba Phase 4 — local + global leaderboards, auth, replay submit.
+ * Mamba Phase 4 — auth, overlays, local + global leaderboards.
  */
 
 import {
@@ -22,11 +22,14 @@ import {
 import { Renderer } from "./renderer.ts";
 import { loadSettings, saveSettings, type Settings } from "./settings.ts";
 import {
+  fetchProfile,
   getSession,
+  setAccountUsername,
   signInWithEmail,
   signOut,
   supabase,
   supabaseConfigured,
+  type Profile,
 } from "./supabase.ts";
 import "./style.css";
 
@@ -56,9 +59,6 @@ const stageEl = document.querySelector<HTMLElement>("#stage");
 const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
 const soundToggleEl = document.querySelector<HTMLInputElement>("#sound-enabled");
 const statusNode = document.querySelector<HTMLElement>("#status");
-const highscorePanel = document.querySelector<HTMLElement>("#highscore-panel");
-const playerNameInput = document.querySelector<HTMLInputElement>("#player-name");
-const saveScoreBtn = document.querySelector<HTMLButtonElement>("#btn-save-score");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
 const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
@@ -67,8 +67,16 @@ const authPanel = document.querySelector<HTMLElement>("#auth-panel");
 const authStatus = document.querySelector<HTMLElement>("#auth-status");
 const authForm = document.querySelector<HTMLFormElement>("#auth-form");
 const authEmail = document.querySelector<HTMLInputElement>("#auth-email");
+const authConfirm = document.querySelector<HTMLElement>("#auth-confirm");
+const usernameForm = document.querySelector<HTMLFormElement>("#username-form");
+const accountUsername = document.querySelector<HTMLInputElement>("#account-username");
+const accountUsernameLabel = document.querySelector<HTMLElement>("#account-username-label");
 const signOutBtn = document.querySelector<HTMLButtonElement>("#btn-sign-out");
-const globalSaveHint = document.querySelector<HTMLElement>("#global-save-hint");
+const gameoverOverlay = document.querySelector<HTMLElement>("#gameover-overlay");
+const goScore = document.querySelector<HTMLElement>("#go-score");
+const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
+const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
+const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
 
 if (
@@ -77,9 +85,6 @@ if (
   !playBtnEl ||
   !soundToggleEl ||
   !statusNode ||
-  !highscorePanel ||
-  !playerNameInput ||
-  !saveScoreBtn ||
   !lbPeriodSelect ||
   !lbScopeSelect ||
   !lbList ||
@@ -88,8 +93,16 @@ if (
   !authStatus ||
   !authForm ||
   !authEmail ||
+  !authConfirm ||
+  !usernameForm ||
+  !accountUsername ||
+  !accountUsernameLabel ||
   !signOutBtn ||
-  !globalSaveHint
+  !gameoverOverlay ||
+  !goScore ||
+  !guestScoreForm ||
+  !guestNameInput ||
+  !playAgainBtn
 ) {
   throw new Error("Required DOM nodes missing");
 }
@@ -99,9 +112,6 @@ const stage = stageEl;
 const playBtn = playBtnEl;
 const soundToggle = soundToggleEl;
 const statusEl = statusNode;
-const highscoreEl = highscorePanel;
-const nameInput = playerNameInput;
-const saveBtn = saveScoreBtn;
 const periodSelect = lbPeriodSelect;
 const scopeSelect = lbScopeSelect;
 const listEl = lbList;
@@ -110,8 +120,16 @@ const authEl = authPanel;
 const authStatusEl = authStatus;
 const authFormEl = authForm;
 const authEmailEl = authEmail;
+const authConfirmEl = authConfirm;
+const usernameFormEl = usernameForm;
+const accountUsernameEl = accountUsername;
+const accountUsernameLabelEl = accountUsernameLabel;
 const signOutEl = signOutBtn;
-const globalHintEl = globalSaveHint;
+const overlayEl = gameoverOverlay;
+const goScoreEl = goScore;
+const guestFormEl = guestScoreForm;
+const guestNameEl = guestNameInput;
+const playAgainEl = playAgainBtn;
 
 const settings: Settings = loadSettings();
 const sounds = new SoundBoard(!settings.soundEnabled);
@@ -125,6 +143,7 @@ let lastTime = performance.now();
 let pendingScore: PendingScore | null = null;
 let scoreSaved = false;
 let signedInEmail: string | null = null;
+let profile: Profile | null = null;
 
 /**
  * True when keyboard focus is in a text field.
@@ -136,6 +155,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * Whether the signed-in account still needs a locked username.
+ */
+function needsUsername(): boolean {
+  return Boolean(signedInEmail && profile && !profile.usernameSet);
+}
+
+/**
  * Applies persisted settings to the menu controls.
  */
 function syncMenuFromSettings(): void {
@@ -144,7 +170,7 @@ function syncMenuFromSettings(): void {
   }
   soundToggle.checked = settings.soundEnabled;
   sounds.setMuted(!settings.soundEnabled);
-  nameInput.value = settings.playerName;
+  guestNameEl.value = settings.playerName;
   scopeSelect.value = settings.leaderboardScope;
 }
 
@@ -190,9 +216,7 @@ function selectedScope(): "local" | "global" {
 function persistFromMenu(): void {
   settings.sizeId = selectedSizeId();
   settings.soundEnabled = soundToggle.checked;
-  settings.playerName = sanitizeName(nameInput.value);
   settings.leaderboardScope = selectedScope();
-  nameInput.value = settings.playerName;
   sounds.setMuted(!settings.soundEnabled);
   saveSettings(settings);
 }
@@ -217,6 +241,15 @@ function stageBudget(): { maxWidth: number; maxHeight: number } {
  */
 function setStatus(text: string): void {
   statusEl.textContent = text;
+}
+
+/**
+ * Enables/disables Play based on username gate.
+ */
+function syncPlayButton(): void {
+  const blocked = needsUsername();
+  playBtn.disabled = blocked;
+  playBtn.title = blocked ? "Set a username first" : "";
 }
 
 /**
@@ -273,66 +306,91 @@ async function refreshLeaderboard(): Promise<void> {
  * Updates auth panel visibility and labels.
  */
 async function refreshAuthUi(): Promise<void> {
+  authConfirmEl.hidden = true;
+  authConfirmEl.textContent = "";
+
   if (!supabaseConfigured) {
     authEl.hidden = true;
-    globalHintEl.hidden = true;
+    profile = null;
+    signedInEmail = null;
+    syncPlayButton();
     return;
   }
 
   authEl.hidden = false;
   const session = await getSession();
   signedInEmail = session?.user.email ?? null;
+  profile = signedInEmail ? await fetchProfile() : null;
+
   if (signedInEmail) {
     authStatusEl.textContent = signedInEmail;
     authFormEl.hidden = true;
     signOutEl.hidden = false;
-    globalHintEl.hidden = false;
+    if (profile?.usernameSet) {
+      usernameFormEl.hidden = true;
+      accountUsernameLabelEl.hidden = false;
+      accountUsernameLabelEl.textContent = `Username: ${profile.displayName}`;
+    } else {
+      usernameFormEl.hidden = false;
+      accountUsernameLabelEl.hidden = true;
+      accountUsernameEl.value = "";
+    }
   } else {
     authStatusEl.textContent = "Guest — local scores only";
     authFormEl.hidden = false;
     signOutEl.hidden = true;
-    globalHintEl.hidden = true;
-    if (settings.leaderboardScope === "global") {
-      // Guests can still browse global boards (public read).
-    }
+    usernameFormEl.hidden = true;
+    accountUsernameLabelEl.hidden = true;
   }
+
+  syncPlayButton();
 }
 
 /**
- * Hides the high-score save panel.
+ * Hides the game-over stage overlay.
  */
-function hideHighscorePanel(): void {
-  highscoreEl.hidden = true;
+function hideGameOverOverlay(): void {
+  overlayEl.hidden = true;
+  guestFormEl.hidden = true;
   pendingScore = null;
   scoreSaved = false;
 }
 
 /**
- * Shows the high-score panel after a qualifying run.
+ * Shows the game-over overlay over the playfield.
  *
  * @param pending - Score + replay payload.
+ * @param mode - Guest name entry vs signed-in auto result.
  */
-function offerHighscore(pending: PendingScore): void {
+function showGameOverOverlay(
+  pending: PendingScore,
+  mode: "guest" | "account",
+): void {
   pendingScore = pending;
   scoreSaved = false;
-  highscoreEl.hidden = false;
-  nameInput.value = settings.playerName;
-  nameInput.focus();
-  nameInput.select();
-  setStatus(`Score ${pending.score}`);
+  overlayEl.hidden = false;
+  goScoreEl.textContent = `Score: ${pending.score}`;
+  if (mode === "guest") {
+    guestFormEl.hidden = false;
+    guestNameEl.value = settings.playerName;
+    guestNameEl.focus();
+    guestNameEl.select();
+  } else {
+    guestFormEl.hidden = true;
+  }
 }
 
 /**
- * Saves the pending high score locally and, when signed in, globally.
+ * Saves a guest local high score from the overlay form.
  *
- * @returns True if a local row was written.
+ * @returns True if saved.
  */
-async function savePendingScore(): Promise<boolean> {
+async function saveGuestScore(): Promise<boolean> {
   if (!pendingScore || scoreSaved) {
     return false;
   }
-  const name = sanitizeName(nameInput.value);
-  nameInput.value = name;
+  const name = sanitizeName(guestNameEl.value);
+  guestNameEl.value = name;
   settings.playerName = name;
   saveSettings(settings);
 
@@ -345,35 +403,55 @@ async function savePendingScore(): Promise<boolean> {
     createdAt: Date.now(),
   });
   scoreSaved = true;
-  highscoreEl.hidden = true;
-
-  let message = rank !== null ? `Saved locally — rank #${rank}` : "Saved locally";
-
-  if (signedInEmail) {
-    const { error } = await submitGlobalScore({
-      seed: pendingScore.seed,
-      sizeId: pendingScore.sizeId,
-      mode: MODE,
-      headings: pendingScore.headings,
-      claimedScore: pendingScore.score,
-      claimedLevel: pendingScore.level,
-      displayName: name,
-    });
-    message = error
-      ? `${message} · global failed: ${error}`
-      : `${message} · global OK`;
-  }
-
-  setStatus(message);
+  guestFormEl.hidden = true;
+  setStatus(rank !== null ? `Saved — rank #${rank}` : "Saved");
   await refreshLeaderboard();
   return true;
+}
+
+/**
+ * Auto-saves a signed-in run to local + global boards.
+ *
+ * @param pending - Score + replay payload.
+ */
+async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
+  const name = sanitizeName(profile?.displayName ?? "AAA");
+  const { rank } = submitScore({
+    name,
+    score: pending.score,
+    level: pending.level,
+    sizeId: pending.sizeId,
+    mode: MODE,
+    createdAt: Date.now(),
+  });
+  scoreSaved = true;
+
+  const { error } = await submitGlobalScore({
+    seed: pending.seed,
+    sizeId: pending.sizeId,
+    mode: MODE,
+    headings: pending.headings,
+    claimedScore: pending.score,
+    claimedLevel: pending.level,
+    displayName: name,
+  });
+
+  let message = rank !== null ? `Saved — local #${rank}` : "Saved locally";
+  message = error ? `${message} · global failed: ${error}` : `${message} · global OK`;
+  setStatus(message);
+  await refreshLeaderboard();
 }
 
 /**
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
-  hideHighscorePanel();
+  if (needsUsername()) {
+    setStatus("Choose a username before playing");
+    accountUsernameEl.focus();
+    return;
+  }
+  hideGameOverOverlay();
   persistFromMenu();
   sounds.resume();
   game = Game.withSize(settings.sizeId, (Math.random() * 0xffffffff) >>> 0);
@@ -386,7 +464,7 @@ function startGame(): void {
 }
 
 /**
- * Handles end-of-run UI and optional high-score offer.
+ * Handles end-of-run UI and score save flow.
  *
  * @param final - Final engine state.
  * @param run - Game instance that just ended.
@@ -396,18 +474,23 @@ function onGameOver(final: GameState, run: Game): void {
   accumulator = 0;
   playBtn.textContent = "Play again";
   const sizeId = settings.sizeId;
-  const localQualify = qualifiesForBoard(final.score, sizeId, MODE);
-  const canSave = localQualify || (Boolean(signedInEmail) && final.score > 0);
-  if (canSave) {
-    offerHighscore({
-      score: final.score,
-      level: final.level,
-      sizeId,
-      seed: run.seed,
-      headings: run.getReplayHeadings(),
-    });
+  const pending: PendingScore = {
+    score: final.score,
+    level: final.level,
+    sizeId,
+    seed: run.seed,
+    headings: run.getReplayHeadings(),
+  };
+
+  if (signedInEmail && profile?.usernameSet && final.score > 0) {
+    showGameOverOverlay(pending, "account");
+    void autoSaveAccountScore(pending);
+  } else if (!signedInEmail && qualifiesForBoard(final.score, sizeId, MODE)) {
+    showGameOverOverlay(pending, "guest");
+    setStatus(`Score ${final.score}`);
   } else {
-    hideHighscorePanel();
+    hideGameOverOverlay();
+    // Still show canvas game-over; no name prompt.
     setStatus(`Score ${final.score}`);
   }
   void refreshLeaderboard();
@@ -429,10 +512,6 @@ function toggleSound(): void {
  */
 function onKeyDown(event: KeyboardEvent): void {
   if (isTypingTarget(event.target)) {
-    if (event.key === "Enter" && screen === "gameover" && !highscoreEl.hidden) {
-      event.preventDefault();
-      void savePendingScore();
-    }
     return;
   }
 
@@ -509,7 +588,9 @@ function frame(now: number): void {
       events: [],
     } satisfies GameState);
 
-  const overlay = screen === "gameover" ? "gameover" : null;
+  // HTML overlay owns the interactive game-over UI; skip canvas text overlay then.
+  const overlay =
+    screen === "gameover" && overlayEl.hidden ? "gameover" : null;
   renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget());
   requestAnimationFrame(frame);
 }
@@ -518,8 +599,13 @@ playBtn.addEventListener("click", () => {
   startGame();
 });
 
-saveBtn.addEventListener("click", () => {
-  void savePendingScore();
+playAgainEl.addEventListener("click", () => {
+  startGame();
+});
+
+guestFormEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveGuestScore();
 });
 
 soundToggle.addEventListener("change", () => {
@@ -536,17 +622,33 @@ scopeSelect.addEventListener("change", () => {
   void refreshLeaderboard();
 });
 
-nameInput.addEventListener("change", () => {
-  settings.playerName = sanitizeName(nameInput.value);
-  nameInput.value = settings.playerName;
-  saveSettings(settings);
-});
-
 authFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   void (async () => {
+    authConfirmEl.hidden = true;
     const { error } = await signInWithEmail(authEmailEl.value);
-    setStatus(error ? error : "Check your email for the magic link");
+    if (error) {
+      authConfirmEl.hidden = false;
+      authConfirmEl.textContent = error;
+      authConfirmEl.style.color = "var(--accent-red)";
+      return;
+    }
+    authConfirmEl.hidden = false;
+    authConfirmEl.style.color = "var(--accent-blue)";
+    authConfirmEl.textContent = "Check your email for the magic link.";
+  })();
+});
+
+usernameFormEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void (async () => {
+    const { error } = await setAccountUsername(accountUsernameEl.value);
+    if (error) {
+      setStatus(error);
+      return;
+    }
+    await refreshAuthUi();
+    setStatus("Username saved — you can play");
   })();
 });
 

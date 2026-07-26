@@ -238,6 +238,124 @@ body {
   gap: 0.45rem;
 }
 
+.auth-confirm {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--accent-blue);
+}
+
+.auth-confirm[hidden] {
+  display: none;
+}
+
+#btn-play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+#stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.playfield {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+#game {
+  display: block;
+  background: #000;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.gameover-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.72);
+  text-align: center;
+  pointer-events: auto;
+  line-height: normal;
+}
+
+.gameover-overlay[hidden] {
+  display: none;
+}
+
+.go-title {
+  margin: 0;
+  color: var(--accent-yellow);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.go-score {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.guest-score-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(220px, 80%);
+}
+
+.guest-score-form .primary {
+  appearance: none;
+  border: none;
+  background: var(--accent-red);
+  color: var(--accent-yellow);
+  font: inherit;
+  font-weight: 700;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+
+#guest-name {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: #070a12;
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.5rem;
+  width: 100%;
+}
+
+.highscore-panel h2,
+.leaderboard h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--accent-yellow);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.name-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: left;
+}
+
 .lb-list {
   list-style: none;
   margin: 0;
@@ -284,23 +402,6 @@ body {
   margin: 0;
   font-size: 0.75rem;
   color: var(--muted);
-}
-
-#stage {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-#game {
-  display: block;
-  background: #000;
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 @media (max-width: 900px) {

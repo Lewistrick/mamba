@@ -65,3 +65,78 @@ export async function signOut(): Promise<void> {
   }
   await supabase.auth.signOut();
 }
+
+/** Profile row used for the locked account username. */
+export interface Profile {
+  id: string;
+  displayName: string;
+  usernameSet: boolean;
+}
+
+/**
+ * Loads the signed-in user's profile.
+ *
+ * @returns Profile or null if missing / signed out.
+ */
+export async function fetchProfile(): Promise<Profile | null> {
+  if (!supabase) {
+    return null;
+  }
+  const user = await getUser();
+  if (!user) {
+    return null;
+  }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, username_set")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error || !data) {
+    // Older DBs without username_set still return display_name.
+    const fallback = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (fallback.error || !fallback.data) {
+      return null;
+    }
+    const name = String(fallback.data.display_name ?? "");
+    return {
+      id: fallback.data.id as string,
+      displayName: name || "AAA",
+      usernameSet: Boolean(name && name !== "AAA"),
+    };
+  }
+  return {
+    id: data.id as string,
+    displayName: String(data.display_name ?? "AAA"),
+    usernameSet: Boolean(data.username_set),
+  };
+}
+
+/**
+ * Sets the account username once (rejected by the app if already set).
+ *
+ * @param displayName - Chosen name.
+ * @returns Error message or null.
+ */
+export async function setAccountUsername(displayName: string): Promise<{ error: string | null }> {
+  if (!supabase) {
+    return { error: "Supabase is not configured" };
+  }
+  const user = await getUser();
+  if (!user) {
+    return { error: "Not signed in" };
+  }
+  const name = displayName.replace(/\s+/g, " ").trim().slice(0, 12);
+  if (!name) {
+    return { error: "Name required" };
+  }
+  const { error } = await supabase
+    .from("profiles")
+    .update({ display_name: name, username_set: true })
+    .eq("id", user.id)
+    .eq("username_set", false);
+  return { error: error?.message ?? null };
+}

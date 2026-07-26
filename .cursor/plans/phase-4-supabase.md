@@ -20,4 +20,6 @@
 4. Copy `apps/web/.env.example` → `apps/web/.env.local` with URL + anon key
 5. Set Auth redirect URL to your site origin (e.g. `http://localhost:5173`)
 
+Also run the follow-up migration [`supabase/migrations/20260726160000_username_set.sql`](supabase/migrations/20260726160000_username_set.sql) (adds `username_set` for locked account names).
+
 Without env vars, the game still works fully offline (local boards only).
