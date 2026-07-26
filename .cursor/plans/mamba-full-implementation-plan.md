@@ -69,7 +69,7 @@ flowchart LR
 - Web Audio:
   - Blue: A (880 Hz) → B (~988 Hz)
   - Green: G# → B at 2× blue’s B (~1661 → ~1976 Hz)
-  - Yellow: A (440 Hz) → F (~698 Hz)
+  - Yellow: A (440 Hz) → F4 (~349 Hz, downward)
   - Plus short molt / death cues; settings mute toggle
 
 ## Phase 3 — Local leaderboards
