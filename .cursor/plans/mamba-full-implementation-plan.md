@@ -72,10 +72,12 @@ flowchart LR
   - Yellow: A (440 Hz) → F4 (~349 Hz, downward)
   - Plus short molt / death cues; settings mute toggle
 
-## Phase 3 — Local leaderboards
+## Phase 3 — Local leaderboards (done)
 
-- `localStorage` keyed by size × period (all-time / weekly / daily) × mode
-- Name prompt on game over
+- Scores stored once with timestamp; boards filtered by size × period × mode
+- Periods: all-time / weekly (Mon local) / daily (local midnight); top 10
+- Mode `solo` now (schema ready for `ai:*` / `mp`)
+- Name prompt on qualifying game over; name remembered in settings
 
 ## Phase 4 — Supabase + global boards + anti-cheat
 

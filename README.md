@@ -4,16 +4,17 @@ A TypeScript + HTML5 Canvas remake of **Mamba**, the 1989 MS-DOS snake game by B
 
 Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds most of its body into a permanent red wall, keeps the newest five segments, and a timed yellow bonus pellet appears. Pellets that would spawn on a wall become valuable green pellets instead.
 
-## Current (Phase 2)
+## Current (Phase 3)
 
 - Deterministic headless engine (`packages/engine`)
 - Field sizes: Small `11×20`, Medium `22×40`, Large `33×60` (height × width)
 - HTML menu beside the canvas (size select, sound toggle, Play)
 - Live board rescale to fit the viewport
-- Constant speed; Web Audio pellet / molt / death beeps
-- Last board size + sound preference remembered in `localStorage`
+- Constant speed; Web Audio pellet / death beeps (S toggles mute)
+- **Local leaderboards**: top 10 per size × all-time / weekly / daily (`solo` mode); name prompt on qualifying game over
+- Preferences (size, sound, name) remembered in `localStorage`
 
-Later phases (leaderboards, AI, multiplayer) are in [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md).
+Later phases (global boards, AI, multiplayer) are in [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md).
 
 ## Rules (Phase 1)
 
@@ -40,7 +41,7 @@ npm run dev
 
 Open the URL Vite prints (default `http://localhost:5173`).
 
-**Controls:** arrow keys to steer · Enter / Space to start or restart.
+**Controls:** arrow keys to steer · Enter / Space to start or restart · S to toggle sound.
 
 ## Monorepo layout
 
@@ -56,7 +57,7 @@ The engine is seeded and deterministic: the same seed and input sequence always 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start the web client |
-| `npm test` | Run engine unit tests |
+| `npm test` | Run engine + web unit tests |
 | `npm run build` | Typecheck engine + build the web client |
 
 ## Credits

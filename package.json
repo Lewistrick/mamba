@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run dev -w @mamba/web",
     "build": "npm run build -w @mamba/engine && npm run build -w @mamba/web",
-    "test": "npm run test -w @mamba/engine",
+    "test": "npm run test -w @mamba/engine && npm run test -w @mamba/web",
     "preview": "npm run preview -w @mamba/web"
   }
 }

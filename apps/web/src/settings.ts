@@ -10,11 +10,14 @@ const STORAGE_KEY = "mamba.settings.v1";
 export interface Settings {
   sizeId: FieldSizeId;
   soundEnabled: boolean;
+  /** Last used high-score name. */
+  playerName: string;
 }
 
 const DEFAULTS: Settings = {
   sizeId: "medium",
   soundEnabled: true,
+  playerName: "AAA",
 };
 
 /**
@@ -41,6 +44,10 @@ export function loadSettings(): Settings {
         typeof parsed.soundEnabled === "boolean"
           ? parsed.soundEnabled
           : DEFAULTS.soundEnabled,
+      playerName:
+        typeof parsed.playerName === "string" && parsed.playerName.trim().length > 0
+          ? parsed.playerName.trim().slice(0, 12)
+          : DEFAULTS.playerName,
     };
   } catch {
     return { ...DEFAULTS };

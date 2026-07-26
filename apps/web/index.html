@@ -39,6 +39,35 @@
         </label>
 
         <button type="button" id="btn-play" class="primary">Play</button>
+
+        <section id="highscore-panel" class="highscore-panel" hidden>
+          <h2>High score!</h2>
+          <label class="name-label">
+            Name
+            <input
+              id="player-name"
+              type="text"
+              maxlength="12"
+              autocomplete="nickname"
+              spellcheck="false"
+            />
+          </label>
+          <button type="button" id="btn-save-score" class="secondary">Save score</button>
+        </section>
+
+        <section class="leaderboard" aria-label="Local leaderboard">
+          <div class="lb-header">
+            <h2>Local scores</h2>
+            <select id="lb-period" aria-label="Period">
+              <option value="all">All-time</option>
+              <option value="weekly">Weekly</option>
+              <option value="daily">Daily</option>
+            </select>
+          </div>
+          <ol id="lb-list" class="lb-list"></ol>
+          <p id="lb-empty" class="lb-empty">No scores yet</p>
+        </section>
+
         <p id="status" class="status" role="status"></p>
         <p class="hint">Arrows to steer · S sound</p>
       </aside>

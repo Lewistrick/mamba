@@ -451,7 +451,7 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.fillText("Original game by Bert Uffen · Remake in progress", Math.round(cssW / 2), y);
     ctx.fillStyle = COLORS.white;
-    ctx.fillText("Phase 2 — sizes · menus · sound", Math.round(cssW / 2), y + 16);
+    ctx.fillText("Phase 3 — local leaderboards", Math.round(cssW / 2), y + 16);
     ctx.textAlign = "left";
   }
 
