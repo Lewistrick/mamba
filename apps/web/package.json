@@ -10,7 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mamba/engine": "*"
+    "@mamba/engine": "*",
+    "@supabase/supabase-js": "^2.49.1"
   },
   "devDependencies": {
     "typescript": "~6.0.2",

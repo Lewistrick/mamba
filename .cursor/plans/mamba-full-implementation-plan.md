@@ -79,11 +79,12 @@ flowchart LR
 - Mode `solo` now (schema ready for `ai:*` / `mp`)
 - Name prompt on qualifying game over; name remembered in settings
 
-## Phase 4 — Supabase + global boards + anti-cheat
+## Phase 4 — Supabase + global boards + anti-cheat (done)
 
-- Auth for sync/spectate; guest keeps local-only scores
-- Submit `{seed, size, mode, inputs}` → Edge Function re-simulates → verified insert
-- UI: global/local, filters for size × period × mode
+- Auth: email magic link; guest keeps local-only scores
+- Submit `{seed, size, mode, headings}` → Edge Function `verify-score` re-simulates → verified insert
+- UI: Local / Global toggle; filters for size × period × mode
+- See [phase-4-supabase.md](phase-4-supabase.md) for setup
 
 ## Phase 5 — AI opponent
 

@@ -1,5 +1,5 @@
 /**
- * Mamba Phase 3 — local leaderboards + Phase 2 client shell.
+ * Mamba Phase 4 — local + global leaderboards, auth, replay submit.
  */
 
 import {
@@ -10,15 +10,24 @@ import {
   type GameState,
 } from "@mamba/engine";
 import { SoundBoard } from "./audio.ts";
+import { fetchGlobalBoard, submitGlobalScore } from "./globalLeaderboard.ts";
 import {
   getBoard,
   qualifiesForBoard,
   sanitizeName,
   submitScore,
   type LeaderboardPeriod,
+  type ScoreEntry,
 } from "./leaderboard.ts";
 import { Renderer } from "./renderer.ts";
 import { loadSettings, saveSettings, type Settings } from "./settings.ts";
+import {
+  getSession,
+  signInWithEmail,
+  signOut,
+  supabase,
+  supabaseConfigured,
+} from "./supabase.ts";
 import "./style.css";
 
 /** Fixed simulation rate (ticks per second). */
@@ -34,6 +43,14 @@ const KEY_TO_DIR: Record<string, Direction> = {
 
 type Screen = "menu" | "playing" | "gameover";
 
+interface PendingScore {
+  score: number;
+  level: number;
+  sizeId: FieldSizeId;
+  seed: number;
+  headings: Direction[];
+}
+
 const canvasEl = document.querySelector<HTMLCanvasElement>("#game");
 const stageEl = document.querySelector<HTMLElement>("#stage");
 const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
@@ -43,8 +60,15 @@ const highscorePanel = document.querySelector<HTMLElement>("#highscore-panel");
 const playerNameInput = document.querySelector<HTMLInputElement>("#player-name");
 const saveScoreBtn = document.querySelector<HTMLButtonElement>("#btn-save-score");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
+const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
+const authPanel = document.querySelector<HTMLElement>("#auth-panel");
+const authStatus = document.querySelector<HTMLElement>("#auth-status");
+const authForm = document.querySelector<HTMLFormElement>("#auth-form");
+const authEmail = document.querySelector<HTMLInputElement>("#auth-email");
+const signOutBtn = document.querySelector<HTMLButtonElement>("#btn-sign-out");
+const globalSaveHint = document.querySelector<HTMLElement>("#global-save-hint");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
 
 if (
@@ -57,8 +81,15 @@ if (
   !playerNameInput ||
   !saveScoreBtn ||
   !lbPeriodSelect ||
+  !lbScopeSelect ||
   !lbList ||
-  !lbEmpty
+  !lbEmpty ||
+  !authPanel ||
+  !authStatus ||
+  !authForm ||
+  !authEmail ||
+  !signOutBtn ||
+  !globalSaveHint
 ) {
   throw new Error("Required DOM nodes missing");
 }
@@ -72,8 +103,15 @@ const highscoreEl = highscorePanel;
 const nameInput = playerNameInput;
 const saveBtn = saveScoreBtn;
 const periodSelect = lbPeriodSelect;
+const scopeSelect = lbScopeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
+const authEl = authPanel;
+const authStatusEl = authStatus;
+const authFormEl = authForm;
+const authEmailEl = authEmail;
+const signOutEl = signOutBtn;
+const globalHintEl = globalSaveHint;
 
 const settings: Settings = loadSettings();
 const sounds = new SoundBoard(!settings.soundEnabled);
@@ -84,8 +122,9 @@ let state: GameState | null = null;
 let screen: Screen = "menu";
 let accumulator = 0;
 let lastTime = performance.now();
-let pendingScore: { score: number; level: number; sizeId: FieldSizeId } | null = null;
+let pendingScore: PendingScore | null = null;
 let scoreSaved = false;
+let signedInEmail: string | null = null;
 
 /**
  * True when keyboard focus is in a text field.
@@ -106,6 +145,7 @@ function syncMenuFromSettings(): void {
   soundToggle.checked = settings.soundEnabled;
   sounds.setMuted(!settings.soundEnabled);
   nameInput.value = settings.playerName;
+  scopeSelect.value = settings.leaderboardScope;
 }
 
 /**
@@ -136,12 +176,22 @@ function selectedPeriod(): LeaderboardPeriod {
 }
 
 /**
+ * Reads local/global scope from the select control.
+ *
+ * @returns Scope id.
+ */
+function selectedScope(): "local" | "global" {
+  return scopeSelect.value === "global" ? "global" : "local";
+}
+
+/**
  * Persists current menu choices.
  */
 function persistFromMenu(): void {
   settings.sizeId = selectedSizeId();
   settings.soundEnabled = soundToggle.checked;
   settings.playerName = sanitizeName(nameInput.value);
+  settings.leaderboardScope = selectedScope();
   nameInput.value = settings.playerName;
   sounds.setMuted(!settings.soundEnabled);
   saveSettings(settings);
@@ -161,7 +211,7 @@ function stageBudget(): { maxWidth: number; maxHeight: number } {
 }
 
 /**
- * Updates the status line under the Play button.
+ * Updates the status line.
  *
  * @param text - Message to show.
  */
@@ -170,13 +220,18 @@ function setStatus(text: string): void {
 }
 
 /**
- * Renders the local leaderboard for the current size + selected period.
+ * Renders a score list into the leaderboard DOM.
+ *
+ * @param board - Rows to show.
  */
-function refreshLeaderboard(): void {
-  const board = getBoard(selectedSizeId(), MODE, selectedPeriod());
+function renderBoard(board: ScoreEntry[]): void {
   listEl.replaceChildren();
   if (board.length === 0) {
     emptyEl.hidden = false;
+    emptyEl.textContent =
+      selectedScope() === "global" && !supabaseConfigured
+        ? "Configure Supabase for global scores"
+        : "No scores yet";
     return;
   }
   emptyEl.hidden = true;
@@ -187,6 +242,60 @@ function refreshLeaderboard(): void {
     li.querySelector(".score")!.textContent = String(row.score);
     listEl.append(li);
   });
+}
+
+/**
+ * Refreshes the visible leaderboard (local or global).
+ */
+async function refreshLeaderboard(): Promise<void> {
+  const sizeId = selectedSizeId();
+  const period = selectedPeriod();
+  const scope = selectedScope();
+
+  if (scope === "local") {
+    renderBoard(getBoard(sizeId, MODE, period));
+    return;
+  }
+
+  if (!supabaseConfigured) {
+    renderBoard([]);
+    return;
+  }
+
+  emptyEl.hidden = false;
+  emptyEl.textContent = "Loading…";
+  listEl.replaceChildren();
+  const board = await fetchGlobalBoard(sizeId, MODE, period);
+  renderBoard(board);
+}
+
+/**
+ * Updates auth panel visibility and labels.
+ */
+async function refreshAuthUi(): Promise<void> {
+  if (!supabaseConfigured) {
+    authEl.hidden = true;
+    globalHintEl.hidden = true;
+    return;
+  }
+
+  authEl.hidden = false;
+  const session = await getSession();
+  signedInEmail = session?.user.email ?? null;
+  if (signedInEmail) {
+    authStatusEl.textContent = signedInEmail;
+    authFormEl.hidden = true;
+    signOutEl.hidden = false;
+    globalHintEl.hidden = false;
+  } else {
+    authStatusEl.textContent = "Guest — local scores only";
+    authFormEl.hidden = false;
+    signOutEl.hidden = true;
+    globalHintEl.hidden = true;
+    if (settings.leaderboardScope === "global") {
+      // Guests can still browse global boards (public read).
+    }
+  }
 }
 
 /**
@@ -201,26 +310,24 @@ function hideHighscorePanel(): void {
 /**
  * Shows the high-score panel after a qualifying run.
  *
- * @param score - Final score.
- * @param level - Final level.
- * @param sizeId - Board size used for the run.
+ * @param pending - Score + replay payload.
  */
-function offerHighscore(score: number, level: number, sizeId: FieldSizeId): void {
-  pendingScore = { score, level, sizeId };
+function offerHighscore(pending: PendingScore): void {
+  pendingScore = pending;
   scoreSaved = false;
   highscoreEl.hidden = false;
   nameInput.value = settings.playerName;
   nameInput.focus();
   nameInput.select();
-  setStatus(`Score ${score}`);
+  setStatus(`Score ${pending.score}`);
 }
 
 /**
- * Saves the pending high score if present and not yet saved.
+ * Saves the pending high score locally and, when signed in, globally.
  *
- * @returns True if a row was written.
+ * @returns True if a local row was written.
  */
-function savePendingScore(): boolean {
+async function savePendingScore(): Promise<boolean> {
   if (!pendingScore || scoreSaved) {
     return false;
   }
@@ -239,8 +346,26 @@ function savePendingScore(): boolean {
   });
   scoreSaved = true;
   highscoreEl.hidden = true;
-  refreshLeaderboard();
-  setStatus(rank !== null ? `Saved — rank #${rank}` : "Saved");
+
+  let message = rank !== null ? `Saved locally — rank #${rank}` : "Saved locally";
+
+  if (signedInEmail) {
+    const { error } = await submitGlobalScore({
+      seed: pendingScore.seed,
+      sizeId: pendingScore.sizeId,
+      mode: MODE,
+      headings: pendingScore.headings,
+      claimedScore: pendingScore.score,
+      claimedLevel: pendingScore.level,
+      displayName: name,
+    });
+    message = error
+      ? `${message} · global failed: ${error}`
+      : `${message} · global OK`;
+  }
+
+  setStatus(message);
+  await refreshLeaderboard();
   return true;
 }
 
@@ -248,9 +373,6 @@ function savePendingScore(): boolean {
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
-  if (pendingScore && !scoreSaved) {
-    // Switching away from game over without saving discards the offer.
-  }
   hideHighscorePanel();
   persistFromMenu();
   sounds.resume();
@@ -260,26 +382,35 @@ function startGame(): void {
   accumulator = 0;
   playBtn.textContent = "Restart";
   setStatus("");
-  refreshLeaderboard();
+  void refreshLeaderboard();
 }
 
 /**
  * Handles end-of-run UI and optional high-score offer.
  *
  * @param final - Final engine state.
+ * @param run - Game instance that just ended.
  */
-function onGameOver(final: GameState): void {
+function onGameOver(final: GameState, run: Game): void {
   screen = "gameover";
   accumulator = 0;
   playBtn.textContent = "Play again";
   const sizeId = settings.sizeId;
-  if (qualifiesForBoard(final.score, sizeId, MODE)) {
-    offerHighscore(final.score, final.level, sizeId);
+  const localQualify = qualifiesForBoard(final.score, sizeId, MODE);
+  const canSave = localQualify || (Boolean(signedInEmail) && final.score > 0);
+  if (canSave) {
+    offerHighscore({
+      score: final.score,
+      level: final.level,
+      sizeId,
+      seed: run.seed,
+      headings: run.getReplayHeadings(),
+    });
   } else {
     hideHighscorePanel();
     setStatus(`Score ${final.score}`);
   }
-  refreshLeaderboard();
+  void refreshLeaderboard();
 }
 
 /**
@@ -300,7 +431,7 @@ function onKeyDown(event: KeyboardEvent): void {
   if (isTypingTarget(event.target)) {
     if (event.key === "Enter" && screen === "gameover" && !highscoreEl.hidden) {
       event.preventDefault();
-      savePendingScore();
+      void savePendingScore();
     }
     return;
   }
@@ -349,7 +480,7 @@ function frame(now: number): void {
       sounds.playEvents(state.events);
       accumulator -= step;
       if (state.status === "gameover") {
-        onGameOver(state);
+        onGameOver(state, game);
         break;
       }
     }
@@ -388,7 +519,7 @@ playBtn.addEventListener("click", () => {
 });
 
 saveBtn.addEventListener("click", () => {
-  savePendingScore();
+  void savePendingScore();
 });
 
 soundToggle.addEventListener("change", () => {
@@ -397,7 +528,12 @@ soundToggle.addEventListener("change", () => {
 });
 
 periodSelect.addEventListener("change", () => {
-  refreshLeaderboard();
+  void refreshLeaderboard();
+});
+
+scopeSelect.addEventListener("change", () => {
+  persistFromMenu();
+  void refreshLeaderboard();
 });
 
 nameInput.addEventListener("change", () => {
@@ -406,18 +542,41 @@ nameInput.addEventListener("change", () => {
   saveSettings(settings);
 });
 
+authFormEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void (async () => {
+    const { error } = await signInWithEmail(authEmailEl.value);
+    setStatus(error ? error : "Check your email for the magic link");
+  })();
+});
+
+signOutEl.addEventListener("click", () => {
+  void (async () => {
+    await signOut();
+    await refreshAuthUi();
+    await refreshLeaderboard();
+    setStatus("Signed out");
+  })();
+});
+
 for (const input of sizeInputs) {
   input.addEventListener("change", () => {
     persistFromMenu();
     if (screen === "menu" || screen === "gameover") {
       state = null;
     }
-    refreshLeaderboard();
+    void refreshLeaderboard();
+  });
+}
+
+if (supabase) {
+  supabase.auth.onAuthStateChange(() => {
+    void refreshAuthUi().then(() => refreshLeaderboard());
   });
 }
 
 window.addEventListener("keydown", onKeyDown);
 syncMenuFromSettings();
 setStatus("");
-refreshLeaderboard();
+void refreshAuthUi().then(() => refreshLeaderboard());
 requestAnimationFrame(frame);

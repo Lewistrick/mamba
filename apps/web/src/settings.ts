@@ -12,12 +12,15 @@ export interface Settings {
   soundEnabled: boolean;
   /** Last used high-score name. */
   playerName: string;
+  /** Local vs global leaderboard view. */
+  leaderboardScope: "local" | "global";
 }
 
 const DEFAULTS: Settings = {
   sizeId: "medium",
   soundEnabled: true,
   playerName: "AAA",
+  leaderboardScope: "local",
 };
 
 /**
@@ -48,6 +51,8 @@ export function loadSettings(): Settings {
         typeof parsed.playerName === "string" && parsed.playerName.trim().length > 0
           ? parsed.playerName.trim().slice(0, 12)
           : DEFAULTS.playerName,
+      leaderboardScope:
+        parsed.leaderboardScope === "global" ? "global" : "local",
     };
   } catch {
     return { ...DEFAULTS };

@@ -4,17 +4,15 @@ A TypeScript + HTML5 Canvas remake of **Mamba**, the 1989 MS-DOS snake game by B
 
 Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds most of its body into a permanent red wall, keeps the newest five segments, and a timed yellow bonus pellet appears. Pellets that would spawn on a wall become valuable green pellets instead.
 
-## Current (Phase 3)
+## Current (Phase 4)
 
-- Deterministic headless engine (`packages/engine`)
-- Field sizes: Small `11×20`, Medium `22×40`, Large `33×60` (height × width)
-- HTML menu beside the canvas (size select, sound toggle, Play)
-- Live board rescale to fit the viewport
-- Constant speed; Web Audio pellet / death beeps (S toggles mute)
-- **Local leaderboards**: top 10 per size × all-time / weekly / daily (`solo` mode); name prompt on qualifying game over
-- Preferences (size, sound, name) remembered in `localStorage`
+- Deterministic headless engine with **replay verification**
+- Field sizes S/M/L, HTML menu, live rescale, sound (S)
+- **Local leaderboards** (size × all-time/weekly/daily × `solo`)
+- **Global leaderboards** via Supabase (optional env): magic-link auth, verified replay submit
+- Preferences in `localStorage`; guest play always works offline
 
-Later phases (global boards, AI, multiplayer) are in [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md).
+See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-4-supabase.md`](.cursor/plans/phase-4-supabase.md).
 
 ## Rules (Phase 1)
 
@@ -42,6 +40,18 @@ npm run dev
 Open the URL Vite prints (default `http://localhost:5173`).
 
 **Controls:** arrow keys to steer · Enter / Space to start or restart · S to toggle sound.
+
+## Supabase (global scores)
+
+Optional. Without config, everything works offline.
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Apply [`supabase/migrations/20260726150000_profiles_scores.sql`](supabase/migrations/20260726150000_profiles_scores.sql)
+3. `npm run sync:engine` then deploy `supabase/functions/verify-score`
+4. Copy [`apps/web/.env.example`](apps/web/.env.example) to `apps/web/.env.local` and set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
+5. Add `http://localhost:5173` to Auth redirect URLs
+
+Auth is **email magic link**. Sign in from the menu to submit verified global scores (raw `{score}` posts are rejected — the server re-simulates your replay).
 
 ## Monorepo layout
 

@@ -192,13 +192,50 @@ body {
   gap: 0.5rem;
 }
 
-#lb-period {
+.lb-filters {
+  display: flex;
+  gap: 0.4rem;
+}
+
+#lb-period,
+#lb-scope {
   font: inherit;
   font-size: 0.75rem;
   color: var(--text);
   background: #070a12;
   border: 1px solid var(--border);
   padding: 0.2rem 0.3rem;
+  flex: 1;
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--border);
+}
+
+.auth-panel[hidden] {
+  display: none;
+}
+
+.auth-panel h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--accent-yellow);
+}
+
+.auth-status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
 .lb-list {

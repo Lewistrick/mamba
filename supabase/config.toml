@@ -1,0 +1,21 @@
+# Supabase local/project config for Mamba.
+# Link a remote project with: npx supabase link --project-ref <ref>
+
+[project]
+id = "mamba"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false

@@ -40,6 +40,19 @@
 
         <button type="button" id="btn-play" class="primary">Play</button>
 
+        <section id="auth-panel" class="auth-panel" hidden>
+          <h2>Account</h2>
+          <p id="auth-status" class="auth-status">Guest — local scores only</p>
+          <form id="auth-form" class="auth-form">
+            <label class="name-label">
+              Email
+              <input id="auth-email" type="email" autocomplete="email" required />
+            </label>
+            <button type="submit" id="btn-magic-link" class="secondary">Email magic link</button>
+          </form>
+          <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
+        </section>
+
         <section id="highscore-panel" class="highscore-panel" hidden>
           <h2>High score!</h2>
           <label class="name-label">
@@ -53,11 +66,18 @@
             />
           </label>
           <button type="button" id="btn-save-score" class="secondary">Save score</button>
+          <p id="global-save-hint" class="hint" hidden>Signed in — also submits to the global board</p>
         </section>
 
-        <section class="leaderboard" aria-label="Local leaderboard">
+        <section class="leaderboard" aria-label="Leaderboard">
           <div class="lb-header">
-            <h2>Local scores</h2>
+            <h2>Scores</h2>
+          </div>
+          <div class="lb-filters">
+            <select id="lb-scope" aria-label="Scope">
+              <option value="local">Local</option>
+              <option value="global">Global</option>
+            </select>
             <select id="lb-period" aria-label="Period">
               <option value="all">All-time</option>
               <option value="weekly">Weekly</option>
