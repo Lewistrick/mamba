@@ -39,7 +39,7 @@ npm run dev
 
 Open the URL Vite prints (default `http://localhost:5173`).
 
-**Controls:** arrow keys to steer · Enter / Space to start or restart · S to toggle sound.
+**Controls:** arrow keys to steer · Enter / Space to start or restart · S to toggle sound · P to pause.
 
 ## Supabase (global scores)
 

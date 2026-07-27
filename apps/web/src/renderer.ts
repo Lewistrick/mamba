@@ -135,7 +135,7 @@ export class Renderer {
    */
   draw(
     state: GameState | null,
-    overlay: "start" | "gameover" | null = null,
+    overlay: "start" | "gameover" | "paused" | null = null,
     budget?: FitBudget,
   ): void {
     const width = state?.width ?? 40;
@@ -165,7 +165,9 @@ export class Renderer {
 
     this.drawFooter();
 
-    if (overlay === "gameover" || state?.status === "gameover") {
+    if (overlay === "paused") {
+      this.drawOverlay("paused", state?.score ?? 0);
+    } else if (overlay === "gameover" || state?.status === "gameover") {
       this.drawOverlay("gameover", state?.score ?? 0);
     }
   }
@@ -486,9 +488,9 @@ export class Renderer {
   }
 
   /**
-   * Draws a game-over overlay.
+   * Draws a full-field status overlay (game over or pause).
    */
-  private drawOverlay(kind: "gameover", score: number): void {
+  private drawOverlay(kind: "gameover" | "paused", score: number): void {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
@@ -500,7 +502,12 @@ export class Renderer {
     const cx = Math.round(cssW / 2);
     const cy = Math.round(cssH / 2) - 10;
 
-    if (kind === "gameover") {
+    if (kind === "paused") {
+      ctx.fillText("PAUSED", cx, cy - 10);
+      ctx.font = "16px 'IBM Plex Mono', monospace";
+      ctx.fillStyle = COLORS.white;
+      ctx.fillText("Press P to resume", cx, cy + 24);
+    } else {
       ctx.fillText("GAME OVER", cx, cy - 20);
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;

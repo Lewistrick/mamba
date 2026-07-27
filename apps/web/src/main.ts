@@ -154,6 +154,7 @@ let game: Game | null = null;
 let state: GameState | null = null;
 let screen: Screen = "menu";
 let accumulator = 0;
+let paused = false;
 let lastTime = performance.now();
 let pendingScore: PendingScore | null = null;
 let scoreSaved = false;
@@ -539,6 +540,7 @@ function startGame(): void {
   hideGameOverOverlay();
   persistFromMenu();
   sounds.resume();
+  paused = false;
   game = Game.withSize(settings.sizeId, (Math.random() * 0xffffffff) >>> 0);
   state = game.getState();
   screen = "playing";
@@ -556,6 +558,7 @@ function startGame(): void {
  */
 function onGameOver(final: GameState, run: Game): void {
   screen = "gameover";
+  paused = false;
   accumulator = 0;
   playBtn.textContent = "Play again";
   const sizeId = settings.sizeId;
@@ -582,6 +585,18 @@ function onGameOver(final: GameState, run: Game): void {
 }
 
 /**
+ * Toggles pause while a run is in progress.
+ */
+function togglePause(): void {
+  if (screen !== "playing") {
+    return;
+  }
+  paused = !paused;
+  accumulator = 0;
+  setStatus(paused ? "Paused — P to resume" : "");
+}
+
+/**
  * Toggles sound on/off and syncs the menu checkbox.
  */
 function toggleSound(): void {
@@ -591,7 +606,7 @@ function toggleSound(): void {
 }
 
 /**
- * Handles keyboard input for movement, restart, and sound.
+ * Handles keyboard input for movement, restart, pause, and sound.
  *
  * @param event - Keyboard event.
  */
@@ -608,6 +623,15 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === "p" || event.key === "P") {
+    if (event.repeat) {
+      return;
+    }
+    event.preventDefault();
+    togglePause();
+    return;
+  }
+
   if (event.key === "s" || event.key === "S") {
     if (event.repeat) {
       return;
@@ -618,7 +642,7 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   const dir = KEY_TO_DIR[event.key];
-  if (dir && game && screen === "playing") {
+  if (dir && game && screen === "playing" && !paused) {
     event.preventDefault();
     if (event.repeat) {
       return;
@@ -636,7 +660,7 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
-  if (screen === "playing" && game) {
+  if (screen === "playing" && game && !paused) {
     accumulator += dt;
     const step = 1 / TICKS_PER_SECOND;
     while (accumulator >= step) {
@@ -675,7 +699,11 @@ function frame(now: number): void {
 
   // HTML overlay owns the interactive game-over UI; skip canvas text overlay then.
   const overlay =
-    screen === "gameover" && overlayEl.hidden ? "gameover" : null;
+    screen === "playing" && paused
+      ? "paused"
+      : screen === "gameover" && overlayEl.hidden
+        ? "gameover"
+        : null;
   renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget());
   requestAnimationFrame(frame);
 }
