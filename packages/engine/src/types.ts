@@ -18,7 +18,13 @@ export interface Point {
 export interface YellowPellet {
   pos: Point;
   value: number;
-  ttl: number;
+  /**
+   * Remaining lifetime in ticks after grace ends.
+   * `null` while the Dijkstra TTL has not been assigned yet.
+   */
+  ttl: number | null;
+  /** Ticks remaining before Dijkstra assigns `ttl`. */
+  graceTicksRemaining: number;
 }
 
 /** Configuration for starting a game. */
@@ -90,6 +96,14 @@ export type GameEvent =
   | { type: "molt" }
   | { type: "die" };
 
-/** Yellow TTL reaction factor range (ticks per Manhattan cell). */
-export const YELLOW_REACTION_MIN = 2;
-export const YELLOW_REACTION_MAX = 5;
+/** Ticks to wait after molt before assigning yellow TTL via Dijkstra. */
+export const YELLOW_GRACE_TICKS = 5;
+
+/** Simulation rate used when converting yellow fallback seconds to ticks. */
+export const TICKS_PER_SECOND = 10;
+
+/**
+ * Minimum unreachable-yellow fallback lifetime in seconds
+ * (`max(2 × Manhattan, this)` → ticks).
+ */
+export const YELLOW_FALLBACK_MIN_SECONDS = 60;

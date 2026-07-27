@@ -113,7 +113,7 @@ flowchart LR
 | Start | Length 5 |
 | Blue | Init 5–12; eat → +1 length, `min(level,10)` pts, 1 spawn |
 | Molt | After 12–22 blue/green this life → shed to walls, keep 5, level++ |
-| Yellow | On molt; `⌊√level × rand(20–50)⌋`; TTL = Manhattan × rand(2–5); eat → 2 spawns |
+| Yellow | On molt; `⌊√level × rand(20–50)⌋`; after 5 ticks TTL = Dijkstra+5 (walls+body), else `max(2×Manhattan, 60s)`; eat → 2 spawns |
 | Green | Spawn on wall; `min(level×10,100)`; 10% directional chain; eat → 2 spawns |
 | Death | Border, self, or red wall |
 

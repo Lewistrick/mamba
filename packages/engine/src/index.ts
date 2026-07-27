@@ -14,8 +14,9 @@ export {
   FIELD_SIZES,
   MEDIUM_SIZE,
   START_LENGTH,
-  YELLOW_REACTION_MAX,
-  YELLOW_REACTION_MIN,
+  TICKS_PER_SECOND,
+  YELLOW_FALLBACK_MIN_SECONDS,
+  YELLOW_GRACE_TICKS,
   type Direction,
   type FieldSize,
   type FieldSizeId,
@@ -26,3 +27,4 @@ export {
   type Point,
   type YellowPellet,
 } from "./types.ts";
+export { dijkstraDistance } from "./pathfinding.ts";

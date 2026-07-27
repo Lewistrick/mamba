@@ -243,9 +243,19 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: { pos: Point; value: number; ttl: number } | null;
+      yellowPellet: {
+        pos: Point;
+        value: number;
+        ttl: number | null;
+        graceTicksRemaining: number;
+      } | null;
     };
-    g.yellowPellet = { pos: { x: 6, y: 5 }, value: 40, ttl: 20 };
+    g.yellowPellet = {
+      pos: { x: 6, y: 5 },
+      value: 40,
+      ttl: 20,
+      graceTicksRemaining: 0,
+    };
 
     game.tick();
     const state = game.getState();
@@ -272,14 +282,122 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: { pos: Point; value: number; ttl: number } | null;
+      yellowPellet: {
+        pos: Point;
+        value: number;
+        ttl: number | null;
+        graceTicksRemaining: number;
+      } | null;
     };
-    g.yellowPellet = { pos: { x: 20, y: 10 }, value: 40, ttl: 2 };
+    g.yellowPellet = {
+      pos: { x: 20, y: 10 },
+      value: 40,
+      ttl: 2,
+      graceTicksRemaining: 0,
+    };
 
     game.tick();
     expect(game.getState().yellowPellet?.ttl).toBe(1);
     game.tick();
     expect(game.getState().yellowPellet).toBeNull();
+  });
+
+  it("assigns yellow TTL via Dijkstra after grace ticks", () => {
+    const game = Game.medium(41);
+    patchGame(game, {
+      snake: [
+        { x: 5, y: 5 },
+        { x: 4, y: 5 },
+        { x: 3, y: 5 },
+        { x: 2, y: 5 },
+        { x: 1, y: 5 },
+      ],
+      direction: "Right",
+      bluePellets: [],
+      greenPellets: [],
+      walls: [],
+      moltThreshold: 99,
+    });
+
+    const g = game as unknown as {
+      yellowPellet: {
+        pos: Point;
+        value: number;
+        ttl: number | null;
+        graceTicksRemaining: number;
+      } | null;
+    };
+    g.yellowPellet = {
+      pos: { x: 15, y: 5 },
+      value: 40,
+      ttl: null,
+      graceTicksRemaining: 5,
+    };
+
+    for (let i = 0; i < 4; i += 1) {
+      game.tick();
+      const yellow = game.getState().yellowPellet;
+      expect(yellow).not.toBeNull();
+      expect(yellow?.ttl).toBeNull();
+      expect(yellow?.graceTicksRemaining).toBe(4 - i);
+    }
+
+    // 5th tick: grace ends; Dijkstra uses head before this tick's move ((9,5) after 4 Rights).
+    game.tick();
+    const settled = game.getState().yellowPellet;
+    expect(settled?.graceTicksRemaining).toBe(0);
+    // Head before 5th move is at (9,5); pellet at (15,5) → Dijkstra 6 + 5 grace buffer.
+    expect(settled?.ttl).toBe(11);
+  });
+
+  it("uses Manhattan fallback TTL when yellow is unreachable", () => {
+    const game = Game.medium(42);
+    patchGame(game, {
+      snake: [
+        { x: 0, y: 1 },
+        { x: 0, y: 0 },
+        { x: 0, y: 2 },
+        { x: 0, y: 3 },
+        { x: 0, y: 4 },
+      ],
+      direction: "Left",
+      bluePellets: [],
+      greenPellets: [],
+      // Wall column seals the right side of the small corridor.
+      walls: [
+        { x: 1, y: 0 },
+        { x: 1, y: 1 },
+        { x: 1, y: 2 },
+        { x: 1, y: 3 },
+        { x: 1, y: 4 },
+        { x: 1, y: 5 },
+      ],
+      moltThreshold: 99,
+    });
+
+    const g = game as unknown as {
+      yellowPellet: {
+        pos: Point;
+        value: number;
+        ttl: number | null;
+        graceTicksRemaining: number;
+      } | null;
+      width: number;
+      height: number;
+    };
+    g.yellowPellet = {
+      pos: { x: 3, y: 1 },
+      value: 40,
+      ttl: null,
+      graceTicksRemaining: 1,
+    };
+
+    // Facing the border: no move progress, grace ends, Dijkstra fails.
+    game.tick();
+    const settled = game.getState().yellowPellet;
+    expect(settled?.graceTicksRemaining).toBe(0);
+    // max(2 * Manhattan(0,1 → 3,1)=3 → 6, 60s * 10tps = 600) = 600
+    expect(settled?.ttl).toBe(600);
   });
 
   it("converts a wall spawn into a green pellet", () => {

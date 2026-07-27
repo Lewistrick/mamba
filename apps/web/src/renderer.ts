@@ -19,7 +19,9 @@ const COLORS = {
   wallHatch: "#d44a4a",
   blue: "#3ac0ff",
   green: "#2ee04a",
-  yellow: "#f0d000",
+  yellow: "#b8e600",
+  yellowTimer: "#000000",
+  yellowTimerUrgent: "#d00000",
   overlay: "rgba(0, 0, 0, 0.72)",
   white: "#f5f5f5",
 } as const;
@@ -29,6 +31,8 @@ const HUD_H = 40;
 const PAD = 16;
 const FOOTER_H = 40;
 const GAP = 1;
+/** Must match the client simulation rate in main.ts. */
+const TICKS_PER_SECOND = 10;
 
 /** Viewport budget used to fit the board on screen. */
 export interface FitBudget {
@@ -259,10 +263,28 @@ export class Renderer {
       this.drawTextCell(origin, p, "**", COLORS.green);
     }
     if (state.yellowPellet) {
-      this.fillBlock(origin, state.yellowPellet.pos, COLORS.yellow);
+      this.drawYellowPellet(origin, state.yellowPellet);
     }
 
     this.drawSnake(origin, state);
+  }
+
+  /**
+   * Draws the lime bonus pellet and second countdown once TTL is set.
+   */
+  private drawYellowPellet(
+    origin: Point,
+    yellow: NonNullable<GameState["yellowPellet"]>,
+  ): void {
+    this.fillBlock(origin, yellow.pos, COLORS.yellow);
+    if (yellow.ttl === null) {
+      return;
+    }
+    const seconds = yellow.ttl / TICKS_PER_SECOND;
+    const label = seconds >= 10 ? String(Math.floor(seconds)) : seconds.toFixed(1);
+    const color =
+      seconds < 3 ? COLORS.yellowTimerUrgent : COLORS.yellowTimer;
+    this.drawTextCell(origin, yellow.pos, label, color, 0.42);
   }
 
   /**
@@ -412,14 +434,22 @@ export class Renderer {
 
   /**
    * Draws a glyph centered in a cell (pellets only).
+   *
+   * @param fontScale - Font size as a fraction of cell size (default 0.65).
    */
-  private drawTextCell(origin: Point, p: Point, text: string, color: string): void {
+  private drawTextCell(
+    origin: Point,
+    p: Point,
+    text: string,
+    color: string,
+    fontScale = 0.65,
+  ): void {
     const { ctx } = this;
     const cell = this.cell;
     const x = Math.round(origin.x + p.x * cell + cell / 2);
     const y = Math.round(origin.y + p.y * cell + cell / 2);
     ctx.fillStyle = color;
-    ctx.font = `bold ${Math.floor(cell * 0.65)}px 'IBM Plex Mono', monospace`;
+    ctx.font = `bold ${Math.floor(cell * fontScale)}px 'IBM Plex Mono', monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y);

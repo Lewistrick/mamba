@@ -3,11 +3,13 @@
  */
 
 import { createRng, randomInt } from "./rng.ts";
+import { dijkstraDistance } from "./pathfinding.ts";
 import {
   MEDIUM_SIZE,
   START_LENGTH,
-  YELLOW_REACTION_MAX,
-  YELLOW_REACTION_MIN,
+  TICKS_PER_SECOND,
+  YELLOW_FALLBACK_MIN_SECONDS,
+  YELLOW_GRACE_TICKS,
   FIELD_SIZES,
   type Direction,
   type FieldSizeId,
@@ -65,6 +67,19 @@ function parseKey(k: string): Point {
  */
 function manhattan(a: Point, b: Point): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/**
+ * TTL used when Dijkstra cannot reach the yellow pellet.
+ *
+ * @param head - Snake head.
+ * @param pellet - Yellow pellet position.
+ * @returns Lifetime in ticks.
+ */
+function unreachableYellowTtl(head: Point, pellet: Point): number {
+  const manhattanTicks = 2 * manhattan(head, pellet);
+  const minTicks = YELLOW_FALLBACK_MIN_SECONDS * TICKS_PER_SECOND;
+  return Math.max(manhattanTicks, minTicks);
 }
 
 /**
@@ -285,6 +300,7 @@ export class Game {
             pos: { ...this.yellowPellet.pos },
             value: this.yellowPellet.value,
             ttl: this.yellowPellet.ttl,
+            graceTicksRemaining: this.yellowPellet.graceTicksRemaining,
           }
         : null,
       score: this.score,
@@ -327,19 +343,54 @@ export class Game {
   }
 
   /**
-   * Decrements yellow TTL and removes it when expired.
+   * Advances yellow grace / TTL. After grace, assigns Dijkstra path length as TTL.
    */
   private decayYellow(): void {
     if (this.yellowPellet === null) {
       return;
     }
-    this.yellowPellet = {
-      ...this.yellowPellet,
-      ttl: this.yellowPellet.ttl - 1,
-    };
-    if (this.yellowPellet.ttl <= 0) {
-      this.yellowPellet = null;
+
+    if (this.yellowPellet.graceTicksRemaining > 0) {
+      const graceTicksRemaining = this.yellowPellet.graceTicksRemaining - 1;
+      if (graceTicksRemaining > 0) {
+        this.yellowPellet = { ...this.yellowPellet, graceTicksRemaining };
+        return;
+      }
+
+      const blocked = new Set<string>(this.walls);
+      for (const segment of this.snake) {
+        blocked.add(key(segment));
+      }
+      const distance = dijkstraDistance(
+        this.width,
+        this.height,
+        this.snake[0],
+        this.yellowPellet.pos,
+        blocked,
+      );
+      const ttl =
+        distance !== null && distance > 0
+          ? distance + YELLOW_GRACE_TICKS
+          : unreachableYellowTtl(this.snake[0], this.yellowPellet.pos);
+      this.yellowPellet = {
+        ...this.yellowPellet,
+        graceTicksRemaining: 0,
+        ttl,
+      };
+      return;
     }
+
+    if (this.yellowPellet.ttl === null) {
+      this.yellowPellet = null;
+      return;
+    }
+
+    const ttl = this.yellowPellet.ttl - 1;
+    if (ttl <= 0) {
+      this.yellowPellet = null;
+      return;
+    }
+    this.yellowPellet = { ...this.yellowPellet, ttl };
   }
 
   /**
@@ -427,7 +478,7 @@ export class Game {
   }
 
   /**
-   * Spawns a yellow bonus pellet with value and TTL from level rules.
+   * Spawns a yellow bonus pellet; TTL is assigned after {@link YELLOW_GRACE_TICKS}.
    */
   private spawnYellow(): void {
     const pos = this.pickEmptyCell();
@@ -437,10 +488,13 @@ export class Game {
 
     const multiplier = randomInt(this.rng, 20, 50);
     const value = Math.floor(Math.sqrt(this.level) * multiplier);
-    const reaction = randomInt(this.rng, YELLOW_REACTION_MIN, YELLOW_REACTION_MAX);
-    const ttl = Math.max(1, manhattan(this.snake[0], pos) * reaction);
 
-    this.yellowPellet = { pos, value, ttl };
+    this.yellowPellet = {
+      pos,
+      value,
+      ttl: null,
+      graceTicksRemaining: YELLOW_GRACE_TICKS,
+    };
   }
 
   /**
