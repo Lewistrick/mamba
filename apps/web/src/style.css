@@ -242,8 +242,7 @@ body {
 .auth-confirm[hidden],
 .auth-panel[hidden],
 .gameover-overlay[hidden],
-.guest-score-form[hidden],
-#account-username-label[hidden] {
+.guest-score-form[hidden] {
   display: none !important;
 }
 
@@ -251,6 +250,24 @@ body {
   margin: 0;
   font-size: 0.75rem;
   color: var(--accent-blue);
+}
+
+.text-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.15rem 0;
+  text-align: left;
+}
+
+.text-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 #btn-play:disabled {
@@ -313,6 +330,21 @@ body {
   margin: 0;
   color: var(--text);
   font-size: 1rem;
+}
+
+.go-save-status {
+  margin: 0;
+  max-width: min(280px, 90%);
+  font-size: 0.85rem;
+  color: var(--accent-blue);
+}
+
+.go-save-status[data-kind="error"] {
+  color: var(--accent-red);
+}
+
+.go-save-status[data-kind="pending"] {
+  color: var(--muted);
 }
 
 .guest-score-form {

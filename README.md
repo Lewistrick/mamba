@@ -47,11 +47,14 @@ Optional. Without config, everything works offline.
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Apply the database schema: open **SQL Editor**, paste [`supabase/setup.sql`](supabase/setup.sql), run it once
-3. `npm run sync:engine` then deploy `supabase/functions/verify-score`
+3. From the repo root: `npm run sync:engine`, then `npx supabase login`, `npx supabase link --project-ref <your-ref>`, and `npx supabase functions deploy verify-score`
 4. Copy [`apps/web/.env.example`](apps/web/.env.example) to `apps/web/.env.local` and set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
 5. Add `http://localhost:5173` to Auth redirect URLs
+6. Under **Authentication → Providers → Email**, keep Email enabled and **disable Confirm email** (free built-in mailer is limited to ~2 emails/hour; password signup then works immediately)
 
-Auth is **email magic link**. Sign in from the menu to submit verified global scores (raw `{score}` posts are rejected — the server re-simulates your replay).
+Auth is **email + password** (magic link is optional). After sign-in, choose a **username once** before Play; that name is locked for global scores. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score`.
+
+**Optional later:** custom SMTP (e.g. Proton Mail SMTP with a custom domain) under **Authentication → SMTP**, raise rate limits, then re-enable Confirm email if you want verified addresses.
 
 ## Monorepo layout
 

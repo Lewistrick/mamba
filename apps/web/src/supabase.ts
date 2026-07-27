@@ -43,7 +43,7 @@ export async function getUser(): Promise<User | null> {
  *
  * @param email - Recipient address.
  */
-export async function signInWithEmail(email: string): Promise<{ error: string | null }> {
+export async function signInWithMagicLink(email: string): Promise<{ error: string | null }> {
   if (!supabase) {
     return { error: "Supabase is not configured" };
   }
@@ -54,6 +54,53 @@ export async function signInWithEmail(email: string): Promise<{ error: string | 
     },
   });
   return { error: error?.message ?? null };
+}
+
+/**
+ * Signs in with email + password.
+ *
+ * @param email - Account email.
+ * @param password - Account password.
+ */
+export async function signInWithPassword(
+  email: string,
+  password: string,
+): Promise<{ error: string | null }> {
+  if (!supabase) {
+    return { error: "Supabase is not configured" };
+  }
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+  return { error: error?.message ?? null };
+}
+
+/**
+ * Creates an account with email + password.
+ *
+ * @param email - Account email.
+ * @param password - Account password.
+ */
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+): Promise<{ error: string | null; needsEmailConfirm: boolean }> {
+  if (!supabase) {
+    return { error: "Supabase is not configured", needsEmailConfirm: false };
+  }
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+    options: {
+      emailRedirectTo: window.location.origin,
+    },
+  });
+  if (error) {
+    return { error: error.message, needsEmailConfirm: false };
+  }
+  // When confirmations are enabled, session is null until the user verifies.
+  return { error: null, needsEmailConfirm: !data.session };
 }
 
 /**

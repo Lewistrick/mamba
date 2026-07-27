@@ -25,8 +25,10 @@ import {
   fetchProfile,
   getSession,
   setAccountUsername,
-  signInWithEmail,
+  signInWithMagicLink,
+  signInWithPassword,
   signOut,
+  signUpWithPassword,
   supabase,
   supabaseConfigured,
   type Profile,
@@ -36,6 +38,8 @@ import "./style.css";
 /** Fixed simulation rate (ticks per second). */
 const TICKS_PER_SECOND = 10;
 const MODE = "solo" as const;
+const MAGIC_COOLDOWN_MS = 60_000;
+const MAGIC_COOLDOWN_KEY = "mamba.magicLinkAt";
 
 const KEY_TO_DIR: Record<string, Direction> = {
   ArrowUp: "Up",
@@ -67,13 +71,17 @@ const authPanel = document.querySelector<HTMLElement>("#auth-panel");
 const authStatus = document.querySelector<HTMLElement>("#auth-status");
 const authForm = document.querySelector<HTMLFormElement>("#auth-form");
 const authEmail = document.querySelector<HTMLInputElement>("#auth-email");
+const authPassword = document.querySelector<HTMLInputElement>("#auth-password");
 const authConfirm = document.querySelector<HTMLElement>("#auth-confirm");
+const signInBtn = document.querySelector<HTMLButtonElement>("#btn-sign-in");
+const signUpBtn = document.querySelector<HTMLButtonElement>("#btn-sign-up");
+const magicLinkBtn = document.querySelector<HTMLButtonElement>("#btn-magic-link");
 const usernameForm = document.querySelector<HTMLFormElement>("#username-form");
 const accountUsername = document.querySelector<HTMLInputElement>("#account-username");
-const accountUsernameLabel = document.querySelector<HTMLElement>("#account-username-label");
 const signOutBtn = document.querySelector<HTMLButtonElement>("#btn-sign-out");
 const gameoverOverlay = document.querySelector<HTMLElement>("#gameover-overlay");
 const goScore = document.querySelector<HTMLElement>("#go-score");
+const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
 const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
@@ -93,13 +101,17 @@ if (
   !authStatus ||
   !authForm ||
   !authEmail ||
+  !authPassword ||
   !authConfirm ||
+  !signInBtn ||
+  !signUpBtn ||
+  !magicLinkBtn ||
   !usernameForm ||
   !accountUsername ||
-  !accountUsernameLabel ||
   !signOutBtn ||
   !gameoverOverlay ||
   !goScore ||
+  !goSaveStatus ||
   !guestScoreForm ||
   !guestNameInput ||
   !playAgainBtn
@@ -120,13 +132,16 @@ const authEl = authPanel;
 const authStatusEl = authStatus;
 const authFormEl = authForm;
 const authEmailEl = authEmail;
+const authPasswordEl = authPassword;
 const authConfirmEl = authConfirm;
+const signUpEl = signUpBtn;
+const magicLinkEl = magicLinkBtn;
 const usernameFormEl = usernameForm;
 const accountUsernameEl = accountUsername;
-const accountUsernameLabelEl = accountUsernameLabel;
 const signOutEl = signOutBtn;
 const overlayEl = gameoverOverlay;
 const goScoreEl = goScore;
+const goSaveStatusEl = goSaveStatus;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
@@ -156,9 +171,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 /**
  * Whether the signed-in account still needs a locked username.
+ * Missing profile counts as needing setup (upsert creates the row).
  */
 function needsUsername(): boolean {
-  return Boolean(signedInEmail && profile && !profile.usernameSet);
+  return Boolean(signedInEmail && (!profile || !profile.usernameSet));
 }
 
 /**
@@ -303,6 +319,51 @@ async function refreshLeaderboard(): Promise<void> {
 }
 
 /**
+ * Shows an inline auth message.
+ *
+ * @param text - Message text.
+ * @param kind - Success or error styling.
+ */
+function showAuthMessage(text: string, kind: "ok" | "error"): void {
+  authConfirmEl.hidden = false;
+  authConfirmEl.textContent = text;
+  authConfirmEl.style.color =
+    kind === "ok" ? "var(--accent-blue)" : "var(--accent-red)";
+}
+
+/**
+ * Remaining magic-link cooldown in milliseconds.
+ */
+function magicCooldownRemaining(): number {
+  const last = Number(localStorage.getItem(MAGIC_COOLDOWN_KEY) ?? 0);
+  return Math.max(0, last + MAGIC_COOLDOWN_MS - Date.now());
+}
+
+/**
+ * Starts the client-side magic-link cooldown and updates the button label.
+ */
+function armMagicCooldown(): void {
+  localStorage.setItem(MAGIC_COOLDOWN_KEY, String(Date.now()));
+  syncMagicLinkButton();
+}
+
+/**
+ * Disables the magic-link button while the cooldown is active.
+ */
+function syncMagicLinkButton(): void {
+  const remaining = magicCooldownRemaining();
+  if (remaining <= 0) {
+    magicLinkEl.disabled = false;
+    magicLinkEl.textContent = "Email a magic link instead";
+    return;
+  }
+  magicLinkEl.disabled = true;
+  const seconds = Math.ceil(remaining / 1000);
+  magicLinkEl.textContent = `Magic link available in ${seconds}s`;
+  window.setTimeout(syncMagicLinkButton, 1000);
+}
+
+/**
  * Updates auth panel visibility and labels.
  */
 async function refreshAuthUi(): Promise<void> {
@@ -311,7 +372,6 @@ async function refreshAuthUi(): Promise<void> {
   authConfirmEl.textContent = "";
   authFormEl.hidden = true;
   usernameFormEl.hidden = true;
-  accountUsernameLabelEl.hidden = true;
   signOutEl.hidden = true;
 
   if (!supabaseConfigured) {
@@ -330,26 +390,17 @@ async function refreshAuthUi(): Promise<void> {
   if (!signedInEmail) {
     authStatusEl.textContent = "Guest — local scores only";
     authFormEl.hidden = false;
+    syncMagicLinkButton();
     syncPlayButton();
     return;
   }
 
-  authStatusEl.textContent = signedInEmail;
   signOutEl.hidden = false;
 
-  if (!profile) {
-    authConfirmEl.hidden = false;
-    authConfirmEl.style.color = "var(--accent-red)";
-    authConfirmEl.textContent =
-      "Database not set up yet. Run supabase/setup.sql in the Supabase SQL editor.";
-    syncPlayButton();
-    return;
-  }
-
-  if (profile.usernameSet) {
-    accountUsernameLabelEl.hidden = false;
-    accountUsernameLabelEl.textContent = `Username: ${profile.displayName}`;
+  if (profile?.usernameSet) {
+    authStatusEl.textContent = profile.displayName;
   } else {
+    authStatusEl.textContent = "Signed in — choose a username";
     usernameFormEl.hidden = false;
     accountUsernameEl.value = "";
   }
@@ -358,11 +409,29 @@ async function refreshAuthUi(): Promise<void> {
 }
 
 /**
+ * Sets the game-over overlay save status line.
+ *
+ * @param text - Message, or null to hide.
+ * @param kind - Success or error styling.
+ */
+function setGoSaveStatus(text: string | null, kind: "ok" | "error" | "pending" = "ok"): void {
+  if (!text) {
+    goSaveStatusEl.hidden = true;
+    goSaveStatusEl.textContent = "";
+    return;
+  }
+  goSaveStatusEl.hidden = false;
+  goSaveStatusEl.textContent = text;
+  goSaveStatusEl.dataset.kind = kind;
+}
+
+/**
  * Hides the game-over stage overlay.
  */
 function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
   guestFormEl.hidden = true;
+  setGoSaveStatus(null);
   pendingScore = null;
   scoreSaved = false;
 }
@@ -382,12 +451,14 @@ function showGameOverOverlay(
   overlayEl.hidden = false;
   goScoreEl.textContent = `Score: ${pending.score}`;
   if (mode === "guest") {
+    setGoSaveStatus(null);
     guestFormEl.hidden = false;
     guestNameEl.value = settings.playerName;
     guestNameEl.focus();
     guestNameEl.select();
   } else {
     guestFormEl.hidden = true;
+    setGoSaveStatus("Saving score…", "pending");
   }
 }
 
@@ -415,7 +486,9 @@ async function saveGuestScore(): Promise<boolean> {
   });
   scoreSaved = true;
   guestFormEl.hidden = true;
-  setStatus(rank !== null ? `Saved — rank #${rank}` : "Saved");
+  const message = rank !== null ? `Saved — rank #${rank}` : "Saved";
+  setGoSaveStatus(message, "ok");
+  setStatus(message);
   await refreshLeaderboard();
   return true;
 }
@@ -449,6 +522,7 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
 
   let message = rank !== null ? `Saved — local #${rank}` : "Saved locally";
   message = error ? `${message} · global failed: ${error}` : `${message} · global OK`;
+  setGoSaveStatus(message, error ? "error" : "ok");
   setStatus(message);
   await refreshLeaderboard();
 }
@@ -636,17 +710,74 @@ scopeSelect.addEventListener("change", () => {
 authFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   void (async () => {
-    authConfirmEl.hidden = true;
-    const { error } = await signInWithEmail(authEmailEl.value);
+    const { error } = await signInWithPassword(authEmailEl.value, authPasswordEl.value);
     if (error) {
-      authConfirmEl.hidden = false;
-      authConfirmEl.textContent = error;
-      authConfirmEl.style.color = "var(--accent-red)";
+      showAuthMessage(error, "error");
       return;
     }
-    authConfirmEl.hidden = false;
-    authConfirmEl.style.color = "var(--accent-blue)";
-    authConfirmEl.textContent = "Check your email for the magic link.";
+    authPasswordEl.value = "";
+    await refreshAuthUi();
+    await refreshLeaderboard();
+  })();
+});
+
+signUpEl.addEventListener("click", () => {
+  void (async () => {
+    if (!authFormEl.reportValidity()) {
+      return;
+    }
+    const { error, needsEmailConfirm } = await signUpWithPassword(
+      authEmailEl.value,
+      authPasswordEl.value,
+    );
+    if (error) {
+      showAuthMessage(error, "error");
+      return;
+    }
+    authPasswordEl.value = "";
+    if (needsEmailConfirm) {
+      showAuthMessage(
+        "Confirm email is still enabled in Supabase (Authentication → Providers → Email). Disable it for password signup without mail, or confirm the link then sign in.",
+        "error",
+      );
+      return;
+    }
+    await refreshAuthUi();
+    await refreshLeaderboard();
+  })();
+});
+
+magicLinkEl.addEventListener("click", () => {
+  void (async () => {
+    if (!authEmailEl.value.trim()) {
+      showAuthMessage("Enter your email first", "error");
+      authEmailEl.focus();
+      return;
+    }
+    const remaining = magicCooldownRemaining();
+    if (remaining > 0) {
+      showAuthMessage(
+        `Please wait ${Math.ceil(remaining / 1000)}s before requesting another link.`,
+        "error",
+      );
+      return;
+    }
+    const { error } = await signInWithMagicLink(authEmailEl.value);
+    if (error) {
+      const rateLimited = /rate limit/i.test(error);
+      showAuthMessage(
+        rateLimited
+          ? "Email rate limit hit — use password sign-in, or wait a few minutes."
+          : error,
+        "error",
+      );
+      if (rateLimited) {
+        armMagicCooldown();
+      }
+      return;
+    }
+    armMagicCooldown();
+    showAuthMessage("Check your email for the magic link.", "ok");
   })();
 });
 
@@ -655,6 +786,7 @@ usernameFormEl.addEventListener("submit", (event) => {
   void (async () => {
     const { error } = await setAccountUsername(accountUsernameEl.value);
     if (error) {
+      showAuthMessage(error, "error");
       setStatus(error);
       return;
     }

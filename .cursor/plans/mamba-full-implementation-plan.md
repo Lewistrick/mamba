@@ -81,7 +81,7 @@ flowchart LR
 
 ## Phase 4 — Supabase + global boards + anti-cheat (done)
 
-- Auth: email magic link; guest keeps local-only scores
+- Auth: email + password (magic link optional); guest keeps local-only scores
 - Submit `{seed, size, mode, headings}` → Edge Function `verify-score` re-simulates → verified insert
 - UI: Local / Global toggle; filters for size × period × mode
 - See [phase-4-supabase.md](phase-4-supabase.md) for setup

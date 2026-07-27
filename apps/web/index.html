@@ -48,7 +48,21 @@
               Email
               <input id="auth-email" type="email" autocomplete="email" required />
             </label>
-            <button type="submit" id="btn-magic-link" class="secondary">Email magic link</button>
+            <label class="name-label">
+              Password
+              <input
+                id="auth-password"
+                type="password"
+                autocomplete="current-password"
+                minlength="6"
+                required
+              />
+            </label>
+            <button type="submit" id="btn-sign-in" class="secondary">Sign in</button>
+            <button type="button" id="btn-sign-up" class="secondary">Create account</button>
+            <button type="button" id="btn-magic-link" class="text-btn">
+              Email a magic link instead
+            </button>
             <p id="auth-confirm" class="auth-confirm" hidden></p>
           </form>
           <form id="username-form" class="auth-form" hidden>
@@ -66,7 +80,6 @@
             </label>
             <button type="submit" class="secondary">Save username</button>
           </form>
-          <p id="account-username-label" class="auth-status" hidden></p>
           <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
         </section>
 
@@ -99,6 +112,7 @@
           <div id="gameover-overlay" class="gameover-overlay" hidden>
             <p class="go-title">GAME OVER</p>
             <p id="go-score" class="go-score">Score: 0</p>
+            <p id="go-save-status" class="go-save-status" hidden></p>
             <form id="guest-score-form" class="guest-score-form">
               <label class="name-label">
                 Name
