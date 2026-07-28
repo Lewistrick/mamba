@@ -1,10 +1,12 @@
 /**
- * Mamba Phase 4 — auth, overlays, local + global leaderboards.
+ * Mamba Phase 5 — solo + AI opponent, auth, local + global leaderboards.
  */
 
 import {
+  AiBrain,
   FIELD_SIZES,
   Game,
+  type AiDifficulty,
   type Direction,
   type FieldSizeId,
   type GameState,
@@ -16,11 +18,17 @@ import {
   qualifiesForBoard,
   sanitizeName,
   submitScore,
+  type GameMode,
   type LeaderboardPeriod,
   type ScoreEntry,
 } from "./leaderboard.ts";
 import { Renderer } from "./renderer.ts";
-import { loadSettings, saveSettings, type Settings } from "./settings.ts";
+import {
+  loadSettings,
+  playModeKey,
+  saveSettings,
+  type Settings,
+} from "./settings.ts";
 import {
   fetchProfile,
   getSession,
@@ -37,7 +45,6 @@ import "./style.css";
 
 /** Fixed simulation rate (ticks per second). */
 const TICKS_PER_SECOND = 10;
-const MODE = "solo" as const;
 const MAGIC_COOLDOWN_MS = 60_000;
 const MAGIC_COOLDOWN_KEY = "mamba.magicLinkAt";
 
@@ -56,6 +63,8 @@ interface PendingScore {
   sizeId: FieldSizeId;
   seed: number;
   headings: Direction[];
+  headingsAi?: Direction[];
+  mode: GameMode;
 }
 
 const canvasEl = document.querySelector<HTMLCanvasElement>("#game");
@@ -65,8 +74,14 @@ const soundToggleEl = document.querySelector<HTMLInputElement>("#sound-enabled")
 const statusNode = document.querySelector<HTMLElement>("#status");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
 const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
+const lbModeSelect = document.querySelector<HTMLSelectElement>("#lb-mode");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
+const aiDifficultyField = document.querySelector<HTMLElement>("#ai-difficulty-field");
+const playModeInputs = document.querySelectorAll<HTMLInputElement>('input[name="play-mode"]');
+const aiDifficultyInputs = document.querySelectorAll<HTMLInputElement>(
+  'input[name="ai-difficulty"]',
+);
 const authPanel = document.querySelector<HTMLElement>("#auth-panel");
 const authStatus = document.querySelector<HTMLElement>("#auth-status");
 const authForm = document.querySelector<HTMLFormElement>("#auth-form");
@@ -95,8 +110,10 @@ if (
   !statusNode ||
   !lbPeriodSelect ||
   !lbScopeSelect ||
+  !lbModeSelect ||
   !lbList ||
   !lbEmpty ||
+  !aiDifficultyField ||
   !authPanel ||
   !authStatus ||
   !authForm ||
@@ -126,8 +143,10 @@ const soundToggle = soundToggleEl;
 const statusEl = statusNode;
 const periodSelect = lbPeriodSelect;
 const scopeSelect = lbScopeSelect;
+const modeSelect = lbModeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
+const aiDifficultyFieldEl = aiDifficultyField;
 const authEl = authPanel;
 const authStatusEl = authStatus;
 const authFormEl = authForm;
@@ -152,6 +171,7 @@ const renderer = new Renderer(canvas);
 
 let game: Game | null = null;
 let state: GameState | null = null;
+let aiBrain: AiBrain | null = null;
 let screen: Screen = "menu";
 let accumulator = 0;
 let paused = false;
@@ -185,10 +205,18 @@ function syncMenuFromSettings(): void {
   for (const input of sizeInputs) {
     input.checked = input.value === settings.sizeId;
   }
+  for (const input of playModeInputs) {
+    input.checked = input.value === settings.playMode;
+  }
+  for (const input of aiDifficultyInputs) {
+    input.checked = input.value === settings.aiDifficulty;
+  }
+  aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
   soundToggle.checked = settings.soundEnabled;
   sounds.setMuted(!settings.soundEnabled);
   guestNameEl.value = settings.playerName;
   scopeSelect.value = settings.leaderboardScope;
+  modeSelect.value = settings.leaderboardMode;
 }
 
 /**
@@ -203,6 +231,40 @@ function selectedSizeId(): FieldSizeId {
     }
   }
   return "medium";
+}
+
+/**
+ * Reads solo vs AI from the menu.
+ */
+function selectedPlayMode(): "solo" | "ai" {
+  for (const input of playModeInputs) {
+    if (input.checked && input.value === "ai") {
+      return "ai";
+    }
+  }
+  return "solo";
+}
+
+/**
+ * Reads AI difficulty from the menu.
+ */
+function selectedAiDifficulty(): AiDifficulty {
+  for (const input of aiDifficultyInputs) {
+    if (
+      input.checked &&
+      (input.value === "easy" || input.value === "medium" || input.value === "hard")
+    ) {
+      return input.value;
+    }
+  }
+  return "medium";
+}
+
+/**
+ * Current submit / board mode string.
+ */
+function currentMode(): GameMode {
+  return playModeKey(settings) as GameMode;
 }
 
 /**
@@ -232,8 +294,12 @@ function selectedScope(): "local" | "global" {
  */
 function persistFromMenu(): void {
   settings.sizeId = selectedSizeId();
+  settings.playMode = selectedPlayMode();
+  settings.aiDifficulty = selectedAiDifficulty();
   settings.soundEnabled = soundToggle.checked;
   settings.leaderboardScope = selectedScope();
+  settings.leaderboardMode = modeSelect.value || playModeKey(settings);
+  aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
   sounds.setMuted(!settings.soundEnabled);
   saveSettings(settings);
 }
@@ -301,9 +367,10 @@ async function refreshLeaderboard(): Promise<void> {
   const sizeId = selectedSizeId();
   const period = selectedPeriod();
   const scope = selectedScope();
+  const mode = (modeSelect.value || "solo") as GameMode;
 
   if (scope === "local") {
-    renderBoard(getBoard(sizeId, MODE, period));
+    renderBoard(getBoard(sizeId, mode, period));
     return;
   }
 
@@ -315,7 +382,7 @@ async function refreshLeaderboard(): Promise<void> {
   emptyEl.hidden = false;
   emptyEl.textContent = "Loading…";
   listEl.replaceChildren();
-  const board = await fetchGlobalBoard(sizeId, MODE, period);
+  const board = await fetchGlobalBoard(sizeId, mode, period);
   renderBoard(board);
 }
 
@@ -482,7 +549,7 @@ async function saveGuestScore(): Promise<boolean> {
     score: pendingScore.score,
     level: pendingScore.level,
     sizeId: pendingScore.sizeId,
-    mode: MODE,
+    mode: pendingScore.mode,
     createdAt: Date.now(),
   });
   scoreSaved = true;
@@ -506,7 +573,7 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
     score: pending.score,
     level: pending.level,
     sizeId: pending.sizeId,
-    mode: MODE,
+    mode: pending.mode,
     createdAt: Date.now(),
   });
   scoreSaved = true;
@@ -514,8 +581,9 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
   const { error } = await submitGlobalScore({
     seed: pending.seed,
     sizeId: pending.sizeId,
-    mode: MODE,
+    mode: pending.mode,
     headings: pending.headings,
+    headingsAi: pending.headingsAi,
     claimedScore: pending.score,
     claimedLevel: pending.level,
     displayName: name,
@@ -541,12 +609,19 @@ function startGame(): void {
   persistFromMenu();
   sounds.resume();
   paused = false;
-  game = Game.withSize(settings.sizeId, (Math.random() * 0xffffffff) >>> 0);
+  const seed = (Math.random() * 0xffffffff) >>> 0;
+  if (settings.playMode === "ai") {
+    game = Game.versusAi(settings.sizeId, seed);
+    aiBrain = new AiBrain(settings.aiDifficulty, seed);
+  } else {
+    game = Game.withSize(settings.sizeId, seed);
+    aiBrain = null;
+  }
   state = game.getState();
   screen = "playing";
   accumulator = 0;
   playBtn.textContent = "Restart";
-  setStatus("");
+  setStatus(settings.playMode === "ai" ? `vs AI (${settings.aiDifficulty})` : "");
   void refreshLeaderboard();
 }
 
@@ -562,24 +637,35 @@ function onGameOver(final: GameState, run: Game): void {
   accumulator = 0;
   playBtn.textContent = "Play again";
   const sizeId = settings.sizeId;
+  const mode = currentMode();
+  const score = final.netScore;
+  const byPlayer = run.getReplayHeadingsByPlayer();
   const pending: PendingScore = {
-    score: final.score,
+    score,
     level: final.level,
     sizeId,
     seed: run.seed,
-    headings: run.getReplayHeadings(),
+    headings: byPlayer[0] ?? run.getReplayHeadings(),
+    headingsAi: byPlayer.length > 1 ? byPlayer[1] : undefined,
+    mode,
   };
 
-  if (signedInEmail && profile?.usernameSet && final.score > 0) {
+  const summary =
+    final.players.length > 1
+      ? `You ${final.players[0].score} · AI ${final.players[1].score} · Net ${score}`
+      : `Score ${score}`;
+
+  if (signedInEmail && profile?.usernameSet && score > 0) {
     showGameOverOverlay(pending, "account");
+    goScoreEl.textContent = summary;
     void autoSaveAccountScore(pending);
-  } else if (!signedInEmail && qualifiesForBoard(final.score, sizeId, MODE)) {
+  } else if (!signedInEmail && qualifiesForBoard(score, sizeId, mode)) {
     showGameOverOverlay(pending, "guest");
-    setStatus(`Score ${final.score}`);
+    goScoreEl.textContent = summary;
+    setStatus(summary);
   } else {
     hideGameOverOverlay();
-    // Still show canvas game-over; no name prompt.
-    setStatus(`Score ${final.score}`);
+    setStatus(summary);
   }
   void refreshLeaderboard();
 }
@@ -664,6 +750,12 @@ function frame(now: number): void {
     accumulator += dt;
     const step = 1 / TICKS_PER_SECOND;
     while (accumulator >= step) {
+      if (aiBrain && game.playerCount > 1) {
+        const view = game.getState();
+        if (view.status === "playing") {
+          game.queueDirection(1, aiBrain.decide(view));
+        }
+      }
       state = game.tick();
       sounds.playEvents(state.events);
       accumulator -= step;
@@ -680,6 +772,19 @@ function frame(now: number): void {
     ({
       width: previewSize.width,
       height: previewSize.height,
+      players: [
+        {
+          body: [],
+          direction: "Right",
+          score: 0,
+          level: 1,
+          pelletsEatenThisLife: 0,
+          moltThreshold: 0,
+          alive: true,
+          blueValue: 1,
+          greenValue: 10,
+        },
+      ],
       snake: [],
       direction: "Right",
       walls: [],
@@ -690,6 +795,7 @@ function frame(now: number): void {
       level: 1,
       pelletsEatenThisLife: 0,
       moltThreshold: 0,
+      netScore: 0,
       status: "playing",
       tick: 0,
       blueValue: 1,
@@ -734,6 +840,35 @@ scopeSelect.addEventListener("change", () => {
   persistFromMenu();
   void refreshLeaderboard();
 });
+
+modeSelect.addEventListener("change", () => {
+  persistFromMenu();
+  void refreshLeaderboard();
+});
+
+for (const input of playModeInputs) {
+  input.addEventListener("change", () => {
+    persistFromMenu();
+    if (settings.playMode === "ai") {
+      settings.leaderboardMode = `ai:${settings.aiDifficulty}`;
+      modeSelect.value = settings.leaderboardMode;
+      saveSettings(settings);
+    }
+    void refreshLeaderboard();
+  });
+}
+
+for (const input of aiDifficultyInputs) {
+  input.addEventListener("change", () => {
+    persistFromMenu();
+    if (settings.playMode === "ai") {
+      settings.leaderboardMode = `ai:${settings.aiDifficulty}`;
+      modeSelect.value = settings.leaderboardMode;
+      saveSettings(settings);
+    }
+    void refreshLeaderboard();
+  });
+}
 
 authFormEl.addEventListener("submit", (event) => {
   event.preventDefault();

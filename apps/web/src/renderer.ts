@@ -15,6 +15,9 @@ const COLORS = {
   snake: "#f0c800",
   snakeBright: "#ffe44d",
   snakeDark: "#101010",
+  snakeAi: "#3ecfcf",
+  snakeAiBright: "#7fffff",
+  snakeAiDark: "#0a3030",
   wall: "#8b1515",
   wallHatch: "#d44a4a",
   blue: "#3ac0ff",
@@ -151,11 +154,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, cssW, cssH);
 
-    this.drawHud(
-      state?.score ?? 0,
-      state?.bluePellets.length ?? 0,
-      state?.level ?? 1,
-    );
+    this.drawHud(state);
 
     if (state === null) {
       this.drawEmptyField(width, height);
@@ -173,9 +172,9 @@ export class Renderer {
   }
 
   /**
-   * Draws the top status bar (title, blue count, level, score).
+   * Draws the top status bar (title, blue count, level, score / versus net).
    */
-  private drawHud(score: number, blueCount: number, level: number): void {
+  private drawHud(state: GameState | null): void {
     const { ctx } = this;
     const { width: cssW } = this.logicalSize;
     ctx.fillStyle = COLORS.hudBar;
@@ -191,11 +190,23 @@ export class Renderer {
     ctx.font = "bold 18px 'IBM Plex Mono', monospace";
     ctx.fillText("MAMBA", 16, cy);
 
-    // Pack stats from the right so small boards never overlap the title.
+    const score = state?.score ?? 0;
+    const blueCount = state?.bluePellets.length ?? 0;
+    const level = state?.level ?? 1;
+    const versus = (state?.players.length ?? 1) > 1;
+
     let cursor = cssW - 10;
-    cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
-    cursor -= 8;
-    cursor = this.drawHudStat(cursor, cy, `Level : ${level}`);
+    if (versus && state) {
+      cursor = this.drawHudStat(cursor, cy, `Net : ${state.netScore}`);
+      cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `AI : ${state.players[1]?.score ?? 0}`);
+      cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
+    } else {
+      cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
+      cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `Level : ${level}`);
+    }
     cursor -= 10;
 
     ctx.font = "bold 14px 'IBM Plex Mono', monospace";
@@ -268,7 +279,9 @@ export class Renderer {
       this.drawYellowPellet(origin, state.yellowPellet);
     }
 
-    this.drawSnake(origin, state);
+    for (let i = state.players.length - 1; i >= 0; i -= 1) {
+      this.drawSnakePlayer(origin, state.players[i], i === 0);
+    }
   }
 
   /**
@@ -290,41 +303,54 @@ export class Renderer {
   }
 
   /**
-   * Draws the snake: solid body tiles, bright smiley head, chevron-only tail.
+   * Draws one snake (human yellow or AI cyan).
    */
-  private drawSnake(origin: Point, state: GameState): void {
-    const { snake, direction } = state;
-    if (snake.length === 0) {
+  private drawSnakePlayer(
+    origin: Point,
+    player: GameState["players"][number],
+    human: boolean,
+  ): void {
+    const { body, direction } = player;
+    if (body.length === 0) {
       return;
     }
 
-    const bodyEnd = snake.length > 1 ? snake.length - 1 : snake.length;
+    const bodyColor = human ? COLORS.snake : COLORS.snakeAi;
+    const headColor = human ? COLORS.snakeBright : COLORS.snakeAiBright;
+    const faceColor = human ? COLORS.snakeDark : COLORS.snakeAiDark;
+
+    const bodyEnd = body.length > 1 ? body.length - 1 : body.length;
     for (let i = 1; i < bodyEnd; i += 1) {
-      this.fillBlock(origin, snake[i], COLORS.snake);
+      this.fillBlock(origin, body[i], bodyColor);
     }
 
-    if (snake.length > 1) {
-      const tail = snake[snake.length - 1];
-      const before = snake[snake.length - 2];
-      this.drawChevronTail(origin, tail, before);
+    if (body.length > 1) {
+      const tail = body[body.length - 1];
+      const before = body[body.length - 2];
+      this.drawChevronTail(origin, tail, before, bodyColor);
     }
 
-    const head = snake[0];
-    this.fillBlock(origin, head, COLORS.snakeBright);
-    this.drawSmileyHead(origin, head, direction);
+    const head = body[0];
+    this.fillBlock(origin, head, headColor);
+    this.drawSmileyHead(origin, head, direction, faceColor);
   }
 
   /**
    * Draws a classic two-eye + mouth face with dark pixels on a bright head.
    */
-  private drawSmileyHead(origin: Point, head: Point, direction: Direction): void {
+  private drawSmileyHead(
+    origin: Point,
+    head: Point,
+    direction: Direction,
+    faceColor: string = COLORS.snakeDark,
+  ): void {
     const { ctx } = this;
     const cell = this.cell;
     const x = origin.x + head.x * cell + GAP;
     const y = origin.y + head.y * cell + GAP;
     const size = cell - GAP * 2;
 
-    ctx.fillStyle = COLORS.snakeDark;
+    ctx.fillStyle = faceColor;
 
     const eyeY = y + Math.floor(size * 0.28);
     const eyeSize = Math.max(2, Math.floor(size * 0.12));
@@ -348,9 +374,14 @@ export class Renderer {
   }
 
   /**
-   * Draws yellow geometric chevrons on a transparent tail cell.
+   * Draws geometric chevrons on a transparent tail cell.
    */
-  private drawChevronTail(origin: Point, tail: Point, before: Point): void {
+  private drawChevronTail(
+    origin: Point,
+    tail: Point,
+    before: Point,
+    color: string = COLORS.snake,
+  ): void {
     const { ctx } = this;
     const cell = this.cell;
     const x = origin.x + tail.x * cell + GAP;
@@ -372,7 +403,7 @@ export class Renderer {
       dy = 1;
     }
 
-    ctx.fillStyle = COLORS.snake;
+    ctx.fillStyle = color;
     for (const offset of [-arm * 0.55, arm * 0.15]) {
       ctx.beginPath();
       if (dx !== 0) {
@@ -483,7 +514,7 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.fillText("Original game by Bert Uffen · Remake in progress", Math.round(cssW / 2), y);
     ctx.fillStyle = COLORS.white;
-    ctx.fillText("Phase 4 — global boards · auth", Math.round(cssW / 2), y + 16);
+    ctx.fillText("Phase 5 — AI opponent · global boards", Math.round(cssW / 2), y + 16);
     ctx.textAlign = "left";
   }
 

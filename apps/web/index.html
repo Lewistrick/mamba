@@ -33,6 +33,21 @@
           >
         </fieldset>
 
+        <fieldset class="size-field" id="mode-field">
+          <legend>Mode</legend>
+          <label><input type="radio" name="play-mode" value="solo" checked /> Solo</label>
+          <label><input type="radio" name="play-mode" value="ai" /> vs AI</label>
+        </fieldset>
+
+        <fieldset class="size-field" id="ai-difficulty-field" hidden>
+          <legend>AI difficulty</legend>
+          <label><input type="radio" name="ai-difficulty" value="easy" /> Easy</label>
+          <label
+            ><input type="radio" name="ai-difficulty" value="medium" checked /> Medium</label
+          >
+          <label><input type="radio" name="ai-difficulty" value="hard" /> Hard</label>
+        </fieldset>
+
         <label class="sound-toggle">
           <input type="checkbox" id="sound-enabled" checked />
           Sound <span class="key-hint">(S)</span>
@@ -91,6 +106,12 @@
             <select id="lb-scope" aria-label="Scope">
               <option value="local">Local</option>
               <option value="global">Global</option>
+            </select>
+            <select id="lb-mode" aria-label="Mode">
+              <option value="solo">Solo</option>
+              <option value="ai:easy">AI Easy</option>
+              <option value="ai:medium">AI Medium</option>
+              <option value="ai:hard">AI Hard</option>
             </select>
             <select id="lb-period" aria-label="Period">
               <option value="all">All-time</option>

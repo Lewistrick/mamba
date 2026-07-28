@@ -27,6 +27,22 @@ export interface YellowPellet {
   graceTicksRemaining: number;
 }
 
+/** Per-snake snapshot for solo or versus play. */
+export interface SnakePlayerState {
+  body: readonly Point[];
+  direction: Direction;
+  score: number;
+  level: number;
+  pelletsEatenThisLife: number;
+  moltThreshold: number;
+  alive: boolean;
+  blueValue: number;
+  greenValue: number;
+}
+
+/** AI difficulty identifiers used in `ai:{id}` leaderboard modes. */
+export type AiDifficulty = "easy" | "medium" | "hard";
+
 /** Configuration for starting a game. */
 export interface GameConfig {
   /** Playfield width in cells. */
@@ -37,27 +53,37 @@ export interface GameConfig {
   seed: number;
   /** Starting snake length (default 5). */
   startLength?: number;
+  /** 1 = solo, 2 = human vs AI (default 1). */
+  playerCount?: 1 | 2;
 }
 
 /** Immutable snapshot of engine state for rendering / networking. */
 export interface GameState {
   width: number;
   height: number;
+  /** All snakes (length 1 solo, 2 versus). */
+  players: readonly SnakePlayerState[];
+  /** Player 0 body (solo / human). */
   snake: readonly Point[];
+  /** Player 0 heading. */
   direction: Direction;
   walls: readonly Point[];
   bluePellets: readonly Point[];
   greenPellets: readonly Point[];
   yellowPellet: YellowPellet | null;
+  /** Player 0 score. */
   score: number;
+  /** Player 0 level. */
   level: number;
   pelletsEatenThisLife: number;
   moltThreshold: number;
+  /** `player[0].score - player[1].score` when versus; else player 0 score. */
+  netScore: number;
   status: GameStatus;
   tick: number;
-  /** Current blue pellet score award (capped). */
+  /** Blue pellet award for player 0's level. */
   blueValue: number;
-  /** Current green pellet score award (capped). */
+  /** Green pellet award for player 0's level. */
   greenValue: number;
   /** Events that occurred on the tick that produced this snapshot. */
   events: readonly GameEvent[];
@@ -90,11 +116,11 @@ export const START_LENGTH = 5;
 
 /** Events emitted during a single tick (for sound / VFX). */
 export type GameEvent =
-  | { type: "eat_blue" }
-  | { type: "eat_green" }
-  | { type: "eat_yellow" }
-  | { type: "molt" }
-  | { type: "die" };
+  | { type: "eat_blue"; player: number }
+  | { type: "eat_green"; player: number }
+  | { type: "eat_yellow"; player: number }
+  | { type: "molt"; player: number }
+  | { type: "die"; player: number };
 
 /** Ticks to wait after molt before assigning yellow TTL via Dijkstra. */
 export const YELLOW_GRACE_TICKS = 5;
@@ -107,3 +133,6 @@ export const TICKS_PER_SECOND = 10;
  * (`max(2 × Manhattan, this)` → ticks).
  */
 export const YELLOW_FALLBACK_MIN_SECONDS = 60;
+
+/** Supported AI difficulties. */
+export const AI_DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];

@@ -4,15 +4,15 @@ A TypeScript + HTML5 Canvas remake of **Mamba**, the 1989 MS-DOS snake game by B
 
 Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds most of its body into a permanent red wall, keeps the newest five segments, and a timed yellow bonus pellet appears. Pellets that would spawn on a wall become valuable green pellets instead.
 
-## Current (Phase 4)
+## Current (Phase 5)
 
-- Deterministic headless engine with **replay verification**
-- Field sizes S/M/L, HTML menu, live rescale, sound (S)
-- **Local leaderboards** (size × all-time/weekly/daily × `solo`)
-- **Global leaderboards** via Supabase (optional env): magic-link auth, verified replay submit
+- Deterministic headless engine with **replay verification** (solo + AI)
+- Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P)
+- **Solo** or **vs AI** (easy / medium / hard) on a shared board; scoreboard uses **net** (you − AI)
+- **Local + global leaderboards** (size × mode × period); account auth via email/password
 - Preferences in `localStorage`; guest play always works offline
 
-See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-4-supabase.md`](.cursor/plans/phase-4-supabase.md).
+See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-5-ai.md`](.cursor/plans/phase-5-ai.md).
 
 ## Rules (Phase 1)
 
@@ -25,7 +25,8 @@ See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
 | Yellow pellet | Spawns on molt (lime); after 5 ticks TTL = Dijkstra + 5 (walls + body blocked), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
-| Death | Hit border, self, or red wall |
+| Death | Hit border, self, red wall, or the other snake (vs AI) |
+| vs AI | Shared board; either death ends the run; saved score = your score − AI score |
 
 Score caps follow the Wikipedia description of the original: blue max **10**, green max **100**.
 
@@ -40,6 +41,8 @@ npm run dev
 Open the URL Vite prints (default `http://localhost:5173`).
 
 **Controls:** arrow keys to steer · Enter / Space to start or restart · S to toggle sound · P to pause.
+
+Pick **Solo** or **vs AI** (and a difficulty) in the menu before Play.
 
 ## Supabase (global scores)
 

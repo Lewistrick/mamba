@@ -1,5 +1,5 @@
 /**
- * Deterministic headless Mamba game engine.
+ * Deterministic headless Mamba game engine (solo or human vs AI).
  */
 
 import { createRng, randomInt } from "./rng.ts";
@@ -18,6 +18,7 @@ import {
   type GameState,
   type GameStatus,
   type Point,
+  type SnakePlayerState,
   type YellowPellet,
 } from "./types.ts";
 
@@ -36,6 +37,19 @@ const DELTA: Record<Direction, Point> = {
 };
 
 const DIRECTIONS: Direction[] = ["Up", "Down", "Left", "Right"];
+
+/** Mutable per-snake simulation state. */
+interface PlayerInternal {
+  body: Point[];
+  direction: Direction;
+  inputQueue: Direction[];
+  score: number;
+  level: number;
+  pelletsEatenThisLife: number;
+  moltThreshold: number;
+  alive: boolean;
+  replayHeadings: Direction[];
+}
 
 /**
  * Converts a point to a stable string key.
@@ -109,41 +123,36 @@ export class Game {
   readonly width: number;
   readonly height: number;
   readonly seed: number;
+  readonly playerCount: 1 | 2;
 
   private readonly rng: () => number;
-  private snake: Point[] = [];
-  private direction: Direction = "Right";
-  private inputQueue: Direction[] = [];
+  private readonly players: PlayerInternal[] = [];
   private walls = new Set<string>();
   private bluePellets = new Set<string>();
   private greenPellets = new Set<string>();
   private yellowPellet: YellowPellet | null = null;
-  private score = 0;
-  private level = 1;
-  private pelletsEatenThisLife = 0;
-  private moltThreshold = 0;
   private status: GameStatus = "playing";
   private tickCount = 0;
   private events: GameEvent[] = [];
-  private replayHeadings: Direction[] = [];
 
   /**
    * Creates and initializes a new game.
    *
-   * @param config - Field size and seed.
+   * @param config - Field size, seed, and player count.
    */
   constructor(config: GameConfig) {
     this.width = config.width;
     this.height = config.height;
     this.seed = config.seed;
+    this.playerCount = config.playerCount === 2 ? 2 : 1;
     this.rng = createRng(config.seed);
-    this.resetSnake(config.startLength ?? START_LENGTH);
-    this.moltThreshold = randomInt(this.rng, 12, 22);
+    const length = config.startLength ?? START_LENGTH;
+    this.initPlayers(length);
     this.spawnInitialBlues();
   }
 
   /**
-   * Creates a medium-field game with a random or provided seed.
+   * Creates a medium-field solo game.
    *
    * @param seed - Optional seed; defaults to a time-based value.
    * @returns A new medium-field game.
@@ -153,47 +162,77 @@ export class Game {
   }
 
   /**
-   * Creates a game for a named field size.
+   * Creates a solo game for a named field size.
    *
    * @param sizeId - Small, medium, or large.
    * @param seed - Optional seed; defaults to a time-based value.
    * @returns A new game instance.
    */
   static withSize(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
-    return new Game({ ...FIELD_SIZES[sizeId], seed });
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 1 });
   }
 
   /**
-   * Queues up to two upcoming direction changes (for quick cornering).
-   * Ignores 180° reverses relative to the current heading or last queued turn.
+   * Creates a human-vs-AI game for a named field size.
+   *
+   * @param sizeId - Small, medium, or large.
+   * @param seed - Optional seed; defaults to a time-based value.
+   * @returns A two-player game instance.
+   */
+  static versusAi(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+  }
+
+  /**
+   * Queues a direction for player 0 (solo / human).
    *
    * @param dir - Requested direction.
    */
-  queueDirection(dir: Direction): void {
+  queueDirection(dir: Direction): void;
+  /**
+   * Queues a direction for a specific player.
+   *
+   * @param playerIndex - 0 = human, 1 = AI.
+   * @param dir - Requested direction.
+   */
+  queueDirection(playerIndex: number, dir: Direction): void;
+  queueDirection(playerIndexOrDir: number | Direction, maybeDir?: Direction): void {
     if (this.status !== "playing") {
+      return;
+    }
+    let playerIndex: number;
+    let dir: Direction;
+    if (typeof playerIndexOrDir === "number") {
+      playerIndex = playerIndexOrDir;
+      dir = maybeDir!;
+    } else {
+      playerIndex = 0;
+      dir = playerIndexOrDir;
+    }
+    const player = this.players[playerIndex];
+    if (!player?.alive) {
       return;
     }
 
     const baseline =
-      this.inputQueue.length > 0
-        ? this.inputQueue[this.inputQueue.length - 1]
-        : this.direction;
+      player.inputQueue.length > 0
+        ? player.inputQueue[player.inputQueue.length - 1]
+        : player.direction;
 
     if (dir === baseline || dir === OPPOSITE[baseline]) {
       return;
     }
 
-    if (this.inputQueue.length < 2) {
-      this.inputQueue.push(dir);
+    if (player.inputQueue.length < 2) {
+      player.inputQueue.push(dir);
       return;
     }
 
-    // Replace the second buffered turn so the latest intent wins.
-    this.inputQueue[1] = dir;
+    player.inputQueue[1] = dir;
   }
 
   /**
-   * Advances the simulation by one tick.
+   * Advances the simulation by one tick (applies queued turns, then moves).
    *
    * @returns Current immutable state snapshot.
    */
@@ -206,79 +245,81 @@ export class Game {
 
     this.tickCount += 1;
 
-    if (this.inputQueue.length > 0) {
-      const nextDir = this.inputQueue.shift()!;
-      if (nextDir !== OPPOSITE[this.direction]) {
-        this.direction = nextDir;
+    for (const player of this.players) {
+      if (!player.alive) {
+        continue;
       }
+      if (player.inputQueue.length > 0) {
+        const nextDir = player.inputQueue.shift()!;
+        if (nextDir !== OPPOSITE[player.direction]) {
+          player.direction = nextDir;
+        }
+      }
+      player.replayHeadings.push(player.direction);
     }
 
-    this.replayHeadings.push(this.direction);
-    return this.advanceAfterHeading();
+    return this.advanceSimultaneous();
   }
 
   /**
-   * Advances one tick with an absolute heading (used for replay verification).
+   * Advances one tick with absolute heading(s) (replay verification).
    *
-   * @param heading - Direction for this tick.
+   * @param headingOrHeadings - Solo heading, or one heading per living player slot.
    * @returns Current immutable state snapshot.
    */
-  replayStep(heading: Direction): GameState {
+  replayStep(headingOrHeadings: Direction | Direction[]): GameState {
     this.events = [];
     if (this.status !== "playing") {
       return this.getState();
     }
     this.tickCount += 1;
-    this.inputQueue = [];
-    this.direction = heading;
-    this.replayHeadings.push(this.direction);
-    return this.advanceAfterHeading();
+
+    const headings = Array.isArray(headingOrHeadings)
+      ? headingOrHeadings
+      : [headingOrHeadings];
+
+    for (let i = 0; i < this.players.length; i += 1) {
+      const player = this.players[i];
+      player.inputQueue = [];
+      if (!player.alive) {
+        continue;
+      }
+      const heading = headings[i] ?? player.direction;
+      player.direction = heading;
+      player.replayHeadings.push(player.direction);
+    }
+
+    return this.advanceSimultaneous();
   }
 
   /**
-   * Returns the absolute per-tick headings recorded for anti-cheat replay.
+   * Returns player 0's absolute per-tick headings (solo / human).
    *
    * @returns Copy of the heading log.
    */
   getReplayHeadings(): Direction[] {
-    return [...this.replayHeadings];
+    return [...this.players[0].replayHeadings];
   }
 
   /**
-   * Movement + eat + molt after the heading for this tick is finalized.
+   * Returns per-player absolute heading logs.
    *
-   * @returns State snapshot.
+   * @returns One array per player.
    */
-  private advanceAfterHeading(): GameState {
-    this.decayYellow();
+  getReplayHeadingsByPlayer(): Direction[][] {
+    return this.players.map((p) => [...p.replayHeadings]);
+  }
 
-    const head = this.snake[0];
-    const delta = DELTA[this.direction];
-    const next: Point = { x: head.x + delta.x, y: head.y + delta.y };
-    const willGrow = this.pelletAt(next) !== null;
-
-    if (
-      !this.inBounds(next) ||
-      this.walls.has(key(next)) ||
-      this.hitsSnake(next, willGrow)
-    ) {
-      this.status = "gameover";
-      this.events.push({ type: "die" });
-      return this.getState();
+  /**
+   * Net score for leaderboards: P0 − P1 in versus, else P0 score.
+   *
+   * @returns Net score.
+   */
+  netScore(): number {
+    if (this.players.length < 2) {
+      return this.players[0].score;
     }
-
-    this.snake.unshift(next);
-    const ate = this.tryEatAt(next);
-
-    if (!ate) {
-      this.snake.pop();
-    }
-
-    if (ate && this.pelletsEatenThisLife >= this.moltThreshold) {
-      this.molt();
-    }
-
-    return this.getState();
+    return this.players[0].score - this.players[1].score;
   }
 
   /**
@@ -287,11 +328,14 @@ export class Game {
    * @returns Game state for rendering or verification.
    */
   getState(): GameState {
+    const snapshotPlayers = this.players.map((p) => this.toPlayerState(p));
+    const p0 = snapshotPlayers[0];
     return {
       width: this.width,
       height: this.height,
-      snake: this.snake.map((p) => ({ ...p })),
-      direction: this.direction,
+      players: snapshotPlayers,
+      snake: p0.body,
+      direction: p0.direction,
       walls: [...this.walls].map(parseKey),
       bluePellets: [...this.bluePellets].map(parseKey),
       greenPellets: [...this.greenPellets].map(parseKey),
@@ -303,33 +347,215 @@ export class Game {
             graceTicksRemaining: this.yellowPellet.graceTicksRemaining,
           }
         : null,
-      score: this.score,
-      level: this.level,
-      pelletsEatenThisLife: this.pelletsEatenThisLife,
-      moltThreshold: this.moltThreshold,
+      score: p0.score,
+      level: p0.level,
+      pelletsEatenThisLife: p0.pelletsEatenThisLife,
+      moltThreshold: p0.moltThreshold,
+      netScore: this.netScore(),
       status: this.status,
       tick: this.tickCount,
-      blueValue: bluePelletValue(this.level),
-      greenValue: greenPelletValue(this.level),
+      blueValue: p0.blueValue,
+      greenValue: p0.greenValue,
       events: [...this.events],
     };
   }
 
   /**
-   * Places the snake horizontally in the center, facing right.
+   * Places snakes for solo (center) or versus (left / right).
    *
-   * @param length - Number of segments.
+   * @param length - Starting length.
    */
-  private resetSnake(length: number): void {
+  private initPlayers(length: number): void {
     const cy = Math.floor(this.height / 2);
-    const cx = Math.floor(this.width / 2);
-    this.snake = [];
-    for (let i = 0; i < length; i += 1) {
-      this.snake.push({ x: cx - i, y: cy });
+    if (this.playerCount === 1) {
+      const cx = Math.floor(this.width / 2);
+      this.players.push(this.makePlayer(length, cx, cy, "Right", -1));
+      return;
     }
-    this.direction = "Right";
-    this.inputQueue = [];
-    this.replayHeadings = [];
+
+    const leftCx = Math.max(length, Math.floor(this.width * 0.25));
+    const rightCx = Math.min(this.width - length - 1, Math.floor(this.width * 0.75));
+    this.players.push(this.makePlayer(length, leftCx, cy, "Right", -1));
+    this.players.push(this.makePlayer(length, rightCx, cy, "Left", 1));
+  }
+
+  /**
+   * Builds a player with a horizontal body.
+   *
+   * @param length - Segment count.
+   * @param headX - Head x.
+   * @param headY - Head y.
+   * @param direction - Facing.
+   * @param tailStepX - Body extension step (−1 left of head when facing right).
+   * @returns Player internal state.
+   */
+  private makePlayer(
+    length: number,
+    headX: number,
+    headY: number,
+    direction: Direction,
+    tailStepX: number,
+  ): PlayerInternal {
+    const body: Point[] = [];
+    for (let i = 0; i < length; i += 1) {
+      body.push({ x: headX + i * tailStepX, y: headY });
+    }
+    return {
+      body,
+      direction,
+      inputQueue: [],
+      score: 0,
+      level: 1,
+      pelletsEatenThisLife: 0,
+      moltThreshold: randomInt(this.rng, 12, 22),
+      alive: true,
+      replayHeadings: [],
+    };
+  }
+
+  /**
+   * Maps internal player state to an immutable snapshot.
+   *
+   * @param player - Internal player.
+   * @returns Snapshot row.
+   */
+  private toPlayerState(player: PlayerInternal): SnakePlayerState {
+    return {
+      body: player.body.map((p) => ({ ...p })),
+      direction: player.direction,
+      score: player.score,
+      level: player.level,
+      pelletsEatenThisLife: player.pelletsEatenThisLife,
+      moltThreshold: player.moltThreshold,
+      alive: player.alive,
+      blueValue: bluePelletValue(player.level),
+      greenValue: greenPelletValue(player.level),
+    };
+  }
+
+  /**
+   * Simultaneous move + eat + molt for all living snakes.
+   *
+   * @returns State snapshot.
+   */
+  private advanceSimultaneous(): GameState {
+    this.decayYellow();
+
+    const livingIndexes = this.players
+      .map((p, i) => (p.alive ? i : -1))
+      .filter((i) => i >= 0);
+
+    const nextHeads = new Map<number, Point>();
+    const willGrow = new Map<number, boolean>();
+
+    for (const i of livingIndexes) {
+      const player = this.players[i];
+      const delta = DELTA[player.direction];
+      const next: Point = {
+        x: player.body[0].x + delta.x,
+        y: player.body[0].y + delta.y,
+      };
+      nextHeads.set(i, next);
+      willGrow.set(i, this.pelletAt(next) !== null);
+    }
+
+    // Head-on / same-cell collisions.
+    for (let a = 0; a < livingIndexes.length; a += 1) {
+      for (let b = a + 1; b < livingIndexes.length; b += 1) {
+        const ia = livingIndexes[a];
+        const ib = livingIndexes[b];
+        const ha = nextHeads.get(ia)!;
+        const hb = nextHeads.get(ib)!;
+        const swap =
+          ha.x === this.players[ib].body[0].x &&
+          ha.y === this.players[ib].body[0].y &&
+          hb.x === this.players[ia].body[0].x &&
+          hb.y === this.players[ia].body[0].y;
+        if ((ha.x === hb.x && ha.y === hb.y) || swap) {
+          this.killPlayer(ia);
+          this.killPlayer(ib);
+        }
+      }
+    }
+
+    for (const i of livingIndexes) {
+      if (!this.players[i].alive) {
+        continue;
+      }
+      const next = nextHeads.get(i)!;
+      const grow = willGrow.get(i)!;
+      if (
+        !this.inBounds(next) ||
+        this.walls.has(key(next)) ||
+        this.hitsAnySnake(next, i, grow)
+      ) {
+        this.killPlayer(i);
+      }
+    }
+
+    if (this.status === "gameover") {
+      return this.getState();
+    }
+
+    // Claim pellets: lower index wins ties.
+    const pelletClaims = new Map<string, number>();
+    for (const i of livingIndexes) {
+      if (!this.players[i].alive) {
+        continue;
+      }
+      const next = nextHeads.get(i)!;
+      if (this.pelletAt(next) === null) {
+        continue;
+      }
+      const k = key(next);
+      if (!pelletClaims.has(k)) {
+        pelletClaims.set(k, i);
+      }
+    }
+
+    const molted: number[] = [];
+    for (const i of livingIndexes) {
+      if (!this.players[i].alive) {
+        continue;
+      }
+      const player = this.players[i];
+      const next = nextHeads.get(i)!;
+      const claimOwner = pelletClaims.get(key(next));
+      const ate = claimOwner === i;
+
+      player.body.unshift(next);
+      if (ate) {
+        this.tryEatAt(i, next);
+        if (player.pelletsEatenThisLife >= player.moltThreshold) {
+          molted.push(i);
+        }
+      } else {
+        player.body.pop();
+      }
+    }
+
+    for (const i of molted) {
+      if (this.players[i].alive) {
+        this.molt(i);
+      }
+    }
+
+    return this.getState();
+  }
+
+  /**
+   * Marks a player dead and ends the run (either death ends versus/solo).
+   *
+   * @param playerIndex - Who died.
+   */
+  private killPlayer(playerIndex: number): void {
+    const player = this.players[playerIndex];
+    if (!player.alive) {
+      return;
+    }
+    player.alive = false;
+    this.events.push({ type: "die", player: playerIndex });
+    this.status = "gameover";
   }
 
   /**
@@ -343,7 +569,7 @@ export class Game {
   }
 
   /**
-   * Advances yellow grace / TTL. After grace, assigns Dijkstra path length as TTL.
+   * Advances yellow grace / TTL using the closest living snake head.
    */
   private decayYellow(): void {
     if (this.yellowPellet === null) {
@@ -358,20 +584,42 @@ export class Game {
       }
 
       const blocked = new Set<string>(this.walls);
-      for (const segment of this.snake) {
-        blocked.add(key(segment));
+      for (const player of this.players) {
+        if (!player.alive) {
+          continue;
+        }
+        for (const segment of player.body) {
+          blocked.add(key(segment));
+        }
       }
-      const distance = dijkstraDistance(
-        this.width,
-        this.height,
-        this.snake[0],
-        this.yellowPellet.pos,
-        blocked,
-      );
+
+      let bestDist: number | null = null;
+      let bestHead: Point | null = null;
+      for (const player of this.players) {
+        if (!player.alive) {
+          continue;
+        }
+        const head = player.body[0];
+        const distance = dijkstraDistance(
+          this.width,
+          this.height,
+          head,
+          this.yellowPellet.pos,
+          blocked,
+        );
+        if (distance !== null && (bestDist === null || distance < bestDist)) {
+          bestDist = distance;
+          bestHead = head;
+        }
+      }
+
       const ttl =
-        distance !== null && distance > 0
-          ? distance + YELLOW_GRACE_TICKS
-          : unreachableYellowTtl(this.snake[0], this.yellowPellet.pos);
+        bestDist !== null && bestDist > 0 && bestHead !== null
+          ? bestDist + YELLOW_GRACE_TICKS
+          : unreachableYellowTtl(
+              bestHead ?? this.players[0].body[0],
+              this.yellowPellet.pos,
+            );
       this.yellowPellet = {
         ...this.yellowPellet,
         graceTicksRemaining: 0,
@@ -418,76 +666,85 @@ export class Game {
   }
 
   /**
-   * Attempts to eat a pellet at the given cell.
+   * Attempts to eat a pellet for a player at the given cell.
    *
+   * @param playerIndex - Eating player.
    * @param pos - Cell under the new head.
    * @returns True if a pellet was eaten.
    */
-  private tryEatAt(pos: Point): boolean {
+  private tryEatAt(playerIndex: number, pos: Point): boolean {
     const kind = this.pelletAt(pos);
     if (kind === null) {
       return false;
     }
+    const player = this.players[playerIndex];
 
     if (kind === "blue") {
       this.bluePellets.delete(key(pos));
-      this.score += bluePelletValue(this.level);
-      this.pelletsEatenThisLife += 1;
-      this.events.push({ type: "eat_blue" });
+      player.score += bluePelletValue(player.level);
+      player.pelletsEatenThisLife += 1;
+      this.events.push({ type: "eat_blue", player: playerIndex });
       this.spawnPellet();
       return true;
     }
 
     if (kind === "green") {
       this.greenPellets.delete(key(pos));
-      this.score += greenPelletValue(this.level);
-      this.pelletsEatenThisLife += 1;
-      this.events.push({ type: "eat_green" });
+      player.score += greenPelletValue(player.level);
+      player.pelletsEatenThisLife += 1;
+      this.events.push({ type: "eat_green", player: playerIndex });
       this.spawnPellet();
       this.spawnPellet();
       return true;
     }
 
-    this.score += this.yellowPellet!.value;
+    player.score += this.yellowPellet!.value;
     this.yellowPellet = null;
-    this.events.push({ type: "eat_yellow" });
+    this.events.push({ type: "eat_yellow", player: playerIndex });
     this.spawnPellet();
     this.spawnPellet();
     return true;
   }
 
   /**
-   * Molts the snake: older segments become walls; keep the newest 5.
-   * Advances the level and spawns a yellow bonus pellet.
+   * Molts a snake: older segments become walls; keep the newest 5.
+   *
+   * @param playerIndex - Molting player.
    */
-  private molt(): void {
+  private molt(playerIndex: number): void {
+    const player = this.players[playerIndex];
     const keep = START_LENGTH;
-    if (this.snake.length > keep) {
-      const shed = this.snake.slice(keep);
+    if (player.body.length > keep) {
+      const shed = player.body.slice(keep);
       for (const segment of shed) {
         this.walls.add(key(segment));
       }
-      this.snake = this.snake.slice(0, keep);
+      player.body = player.body.slice(0, keep);
     }
 
-    this.level += 1;
-    this.pelletsEatenThisLife = 0;
-    this.moltThreshold = randomInt(this.rng, 12, 22);
-    this.events.push({ type: "molt" });
-    this.spawnYellow();
+    player.level += 1;
+    player.pelletsEatenThisLife = 0;
+    player.moltThreshold = randomInt(this.rng, 12, 22);
+    this.events.push({ type: "molt", player: playerIndex });
+    this.spawnYellow(player.level);
   }
 
   /**
-   * Spawns a yellow bonus pellet; TTL is assigned after {@link YELLOW_GRACE_TICKS}.
+   * Spawns a yellow bonus pellet if none is active.
+   *
+   * @param level - Level of the molting snake (for value).
    */
-  private spawnYellow(): void {
+  private spawnYellow(level: number): void {
+    if (this.yellowPellet !== null) {
+      return;
+    }
     const pos = this.pickEmptyCell();
     if (pos === null) {
       return;
     }
 
     const multiplier = randomInt(this.rng, 20, 50);
-    const value = Math.floor(Math.sqrt(this.level) * multiplier);
+    const value = Math.floor(Math.sqrt(level) * multiplier);
 
     this.yellowPellet = {
       pos,
@@ -498,8 +755,7 @@ export class Game {
   }
 
   /**
-   * Spawns a replacement pellet after eating blue.
-   * Empty cell → blue; wall cell → green (with optional chain).
+   * Spawns a replacement pellet after eating.
    */
   private spawnPellet(): void {
     const cell = this.pickSpawnCell();
@@ -576,7 +832,6 @@ export class Game {
         ) {
           continue;
         }
-        // Walls and empty cells are both valid spawn targets.
         candidates.push(p);
       }
     }
@@ -630,30 +885,53 @@ export class Game {
   }
 
   /**
-   * Checks self-collision. When not growing, the tail cell is vacating and safe.
+   * Collision against any snake body, accounting for vacating tails.
    *
-   * @param p - Proposed head position.
-   * @param willGrow - Whether the snake will grow this tick.
-   * @returns True if the move hits the snake.
+   * @param p - Proposed head.
+   * @param selfIndex - Moving player.
+   * @param selfWillGrow - Whether self grows this tick.
+   * @returns True if blocked.
    */
-  private hitsSnake(p: Point, willGrow: boolean): boolean {
-    const limit = willGrow ? this.snake.length : this.snake.length - 1;
-    for (let i = 0; i < limit; i += 1) {
-      const segment = this.snake[i];
-      if (segment.x === p.x && segment.y === p.y) {
-        return true;
+  private hitsAnySnake(p: Point, selfIndex: number, selfWillGrow: boolean): boolean {
+    for (let i = 0; i < this.players.length; i += 1) {
+      const other = this.players[i];
+      if (!other.alive && i !== selfIndex) {
+        // Dead bodies still occupy until game ends; treat as solid.
+      }
+      const body = other.body;
+      const grow = i === selfIndex ? selfWillGrow : false;
+      // Other snakes: if they also move this tick, their tail vacates only if they don't grow.
+      // Approximate with current body; simultaneous tails handled via head-on check separately.
+      let limit = body.length;
+      if (i === selfIndex) {
+        limit = grow ? body.length : body.length - 1;
+      } else if (other.alive) {
+        // Other living snake will move: tail vacates unless they grow into a pellet.
+        const otherNext = {
+          x: body[0].x + DELTA[other.direction].x,
+          y: body[0].y + DELTA[other.direction].y,
+        };
+        const otherGrows = this.pelletAt(otherNext) !== null;
+        limit = otherGrows ? body.length : body.length - 1;
+      }
+      for (let s = 0; s < limit; s += 1) {
+        if (body[s].x === p.x && body[s].y === p.y) {
+          return true;
+        }
       }
     }
     return false;
   }
 
   /**
-   * Checks whether the snake currently occupies a cell.
+   * Checks whether any snake currently occupies a cell.
    *
    * @param p - Point to test.
-   * @returns True if occupied by the snake.
+   * @returns True if occupied.
    */
   private isSnakeOccupied(p: Point): boolean {
-    return this.snake.some((segment) => segment.x === p.x && segment.y === p.y);
+    return this.players.some((player) =>
+      player.body.some((segment) => segment.x === p.x && segment.y === p.y),
+    );
   }
 }

@@ -1,8 +1,9 @@
 /**
- * Persisted client settings (board size + sound).
+ * Persisted client settings (board size, mode, sound).
  */
 
-import type { FieldSizeId } from "@mamba/engine";
+import type { AiDifficulty, FieldSizeId } from "@mamba/engine";
+import { AI_DIFFICULTIES } from "@mamba/engine";
 
 const STORAGE_KEY = "mamba.settings.v1";
 
@@ -14,6 +15,12 @@ export interface Settings {
   playerName: string;
   /** Local vs global leaderboard view. */
   leaderboardScope: "local" | "global";
+  /** Solo or versus AI. */
+  playMode: "solo" | "ai";
+  /** AI difficulty when playMode is ai. */
+  aiDifficulty: AiDifficulty;
+  /** Leaderboard mode filter (`solo` or `ai:easy` …). */
+  leaderboardMode: string;
 }
 
 const DEFAULTS: Settings = {
@@ -21,7 +28,20 @@ const DEFAULTS: Settings = {
   soundEnabled: true,
   playerName: "AAA",
   leaderboardScope: "local",
+  playMode: "solo",
+  aiDifficulty: "medium",
+  leaderboardMode: "solo",
 };
+
+/**
+ * Builds the leaderboard / submit mode string from play settings.
+ *
+ * @param settings - Client settings.
+ * @returns `solo` or `ai:{difficulty}`.
+ */
+export function playModeKey(settings: Settings): string {
+  return settings.playMode === "ai" ? `ai:${settings.aiDifficulty}` : "solo";
+}
 
 /**
  * Loads settings from localStorage, falling back to defaults.
@@ -41,6 +61,16 @@ export function loadSettings(): Settings {
       parsed.sizeId === "large"
         ? parsed.sizeId
         : DEFAULTS.sizeId;
+    const aiDifficulty = AI_DIFFICULTIES.includes(parsed.aiDifficulty as AiDifficulty)
+      ? (parsed.aiDifficulty as AiDifficulty)
+      : DEFAULTS.aiDifficulty;
+    const playMode = parsed.playMode === "ai" ? "ai" : "solo";
+    const leaderboardMode =
+      typeof parsed.leaderboardMode === "string" && parsed.leaderboardMode.length > 0
+        ? parsed.leaderboardMode
+        : playMode === "ai"
+          ? `ai:${aiDifficulty}`
+          : "solo";
     return {
       sizeId,
       soundEnabled:
@@ -53,6 +83,9 @@ export function loadSettings(): Settings {
           : DEFAULTS.playerName,
       leaderboardScope:
         parsed.leaderboardScope === "global" ? "global" : "local",
+      playMode,
+      aiDifficulty,
+      leaderboardMode,
     };
   } catch {
     return { ...DEFAULTS };

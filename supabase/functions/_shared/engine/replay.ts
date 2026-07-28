@@ -13,9 +13,16 @@ export interface ReplayPayload {
   seed: number;
   sizeId: FieldSizeId;
   mode: string;
-  /** Absolute heading applied at the start of each tick (after input). */
+  /**
+   * Absolute heading applied each tick for player 0.
+   * For solo this is the only stream; for `ai:*` pair with {@link headingsAi}.
+   */
   headings: Direction[];
+  /** Absolute headings for player 1 (AI); required when mode starts with `ai:`. */
+  headingsAi?: Direction[];
+  /** Claimed score: solo score, or net (P0 − P1) for AI modes. */
   claimedScore: number;
+  /** Claimed player-0 level (solo / human). */
   claimedLevel: number;
 }
 
@@ -55,34 +62,58 @@ export function verifyReplay(payload: ReplayPayload): VerifyResult {
     }
   }
 
-  const game = new Game({ ...FIELD_SIZES[payload.sizeId], seed: payload.seed });
+  const versus = payload.mode.startsWith("ai:");
+  if (versus) {
+    if (!Array.isArray(payload.headingsAi) || payload.headingsAi.length === 0) {
+      return { ok: false, score: 0, level: 0, ticks: 0, reason: "empty_ai_replay" };
+    }
+    if (payload.headingsAi.length !== payload.headings.length) {
+      return { ok: false, score: 0, level: 0, ticks: 0, reason: "ai_replay_length_mismatch" };
+    }
+    for (const heading of payload.headingsAi) {
+      if (!DIRECTIONS.has(heading)) {
+        return { ok: false, score: 0, level: 0, ticks: 0, reason: "invalid_ai_heading" };
+      }
+    }
+  }
+
+  const game = versus
+    ? Game.versusAi(payload.sizeId, payload.seed)
+    : new Game({ ...FIELD_SIZES[payload.sizeId], seed: payload.seed });
+
   let state = game.getState();
-  for (const heading of payload.headings) {
+  for (let i = 0; i < payload.headings.length; i += 1) {
     if (state.status !== "playing") {
       return {
         ok: false,
-        score: state.score,
+        score: versus ? state.netScore : state.score,
         level: state.level,
         ticks: state.tick,
         reason: "extra_inputs_after_gameover",
       };
     }
-    state = game.replayStep(heading);
+    if (versus) {
+      state = game.replayStep([payload.headings[i], payload.headingsAi![i]]);
+    } else {
+      state = game.replayStep(payload.headings[i]);
+    }
   }
 
   if (state.status !== "gameover") {
     return {
       ok: false,
-      score: state.score,
+      score: versus ? state.netScore : state.score,
       level: state.level,
       ticks: state.tick,
       reason: "run_not_finished",
     };
   }
-  if (state.score !== payload.claimedScore || state.level !== payload.claimedLevel) {
+
+  const finalScore = versus ? state.netScore : state.score;
+  if (finalScore !== payload.claimedScore || state.level !== payload.claimedLevel) {
     return {
       ok: false,
-      score: state.score,
+      score: finalScore,
       level: state.level,
       ticks: state.tick,
       reason: "score_mismatch",
@@ -91,7 +122,7 @@ export function verifyReplay(payload: ReplayPayload): VerifyResult {
 
   return {
     ok: true,
-    score: state.score,
+    score: finalScore,
     level: state.level,
     ticks: state.tick,
   };

@@ -86,15 +86,18 @@ flowchart LR
 - UI: Local / Global toggle; filters for size × period × mode
 - See [phase-4-supabase.md](phase-4-supabase.md) for setup
 
-## Phase 5 — AI opponent
+## Phase 5 — AI opponent (done)
 
-- Shared board; difficulties emit same direction inputs
-- Leaderboard `mode = ai:{difficulty}` (human score)
+- Shared board; difficulties emit direction inputs via `AiBrain`
+- End when either dies; score = player − AI (net)
+- Leaderboard `mode = ai:{easy|medium|hard}` (human net score)
+- See [phase-5-ai.md](phase-5-ai.md)
 
 ## Phase 6 — Online 1v1
 
 - Hono WS server owns ticks; clients send inputs only
 - Matchmaking / room codes; head-on → both die
+- Optional: Proton custom SMTP + re-enable Confirm email (Auth)
 
 ## Phase 7 — Spectating
 
@@ -115,8 +118,8 @@ flowchart LR
 | Molt | After 12–22 blue/green this life → shed to walls, keep 5, level++ |
 | Yellow | On molt; `⌊√level × rand(20–50)⌋`; after 5 ticks TTL = Dijkstra+5 (walls+body), else `max(2×Manhattan, 60s)`; eat → 2 spawns |
 | Green | Spawn on wall; `min(level×10,100)`; 10% directional chain; eat → 2 spawns |
-| Death | Border, self, or red wall |
+| Death | Border, self, or red wall (or other snake in vs AI) |
 
 ## Implementation order
 
-Phase 1 → 2 → 3 → 4; AI (5) can parallel after 1/4; MP (6) after engine + auth; spectate (7) → tournaments (8).
+Phase 1 → 2 → 3 → 4 → **5 (AI, done)**; MP (6) after engine + auth; spectate (7) → tournaments (8).

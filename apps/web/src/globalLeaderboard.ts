@@ -63,6 +63,7 @@ export interface GlobalSubmitBody {
   sizeId: FieldSizeId;
   mode: GameMode;
   headings: string[];
+  headingsAi?: string[];
   claimedScore: number;
   claimedLevel: number;
   displayName: string;

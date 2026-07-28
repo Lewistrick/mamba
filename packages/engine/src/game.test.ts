@@ -11,7 +11,7 @@ import type { Direction, Point } from "./types.ts";
  * Forces the engine into a controllable layout for white-box tests.
  *
  * @param game - Game instance.
- * @param patch - Partial internal fields to overwrite.
+ * @param patch - Partial internal fields to overwrite (player 0 + shared board).
  */
 function patchGame(
   game: Game,
@@ -28,22 +28,26 @@ function patchGame(
   },
 ): void {
   const g = game as unknown as {
-    snake: Point[];
-    direction: Direction;
+    players: Array<{
+      body: Point[];
+      direction: Direction;
+      score: number;
+      level: number;
+      pelletsEatenThisLife: number;
+      moltThreshold: number;
+      alive: boolean;
+    }>;
     walls: Set<string>;
     bluePellets: Set<string>;
     greenPellets: Set<string>;
-    level: number;
-    pelletsEatenThisLife: number;
-    moltThreshold: number;
-    score: number;
   };
+  const p0 = g.players[0];
 
   if (patch.snake) {
-    g.snake = patch.snake.map((p) => ({ ...p }));
+    p0.body = patch.snake.map((p) => ({ ...p }));
   }
   if (patch.direction) {
-    g.direction = patch.direction;
+    p0.direction = patch.direction;
   }
   if (patch.walls) {
     g.walls = new Set(patch.walls.map((p) => `${p.x},${p.y}`));
@@ -55,16 +59,16 @@ function patchGame(
     g.greenPellets = new Set(patch.greenPellets.map((p) => `${p.x},${p.y}`));
   }
   if (patch.level !== undefined) {
-    g.level = patch.level;
+    p0.level = patch.level;
   }
   if (patch.pelletsEatenThisLife !== undefined) {
-    g.pelletsEatenThisLife = patch.pelletsEatenThisLife;
+    p0.pelletsEatenThisLife = patch.pelletsEatenThisLife;
   }
   if (patch.moltThreshold !== undefined) {
-    g.moltThreshold = patch.moltThreshold;
+    p0.moltThreshold = patch.moltThreshold;
   }
   if (patch.score !== undefined) {
-    g.score = patch.score;
+    p0.score = patch.score;
   }
 }
 
@@ -482,5 +486,60 @@ describe("Game", () => {
     const afterSecond = game.tick();
     expect(afterSecond.direction).toBe("Left");
     expect(afterSecond.snake[0]).toEqual({ x: 4, y: 4 });
+  });
+
+  it("ends versus when snakes collide head-on", () => {
+    const game = Game.versusAi("small", 99);
+    const g = game as unknown as {
+      players: Array<{
+        body: Point[];
+        direction: Direction;
+        alive: boolean;
+        inputQueue: Direction[];
+        moltThreshold: number;
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    g.players[1].body = [
+      { x: 7, y: 5 },
+      { x: 8, y: 5 },
+      { x: 9, y: 5 },
+      { x: 10, y: 5 },
+      { x: 11, y: 5 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+
+    const state = game.tick();
+    expect(state.status).toBe("gameover");
+    expect(state.players[0].alive).toBe(false);
+    expect(state.players[1].alive).toBe(false);
+  });
+
+  it("reports net score as player minus AI", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      players: Array<{ score: number }>;
+    };
+    g.players[0].score = 80;
+    g.players[1].score = 30;
+    expect(game.netScore()).toBe(50);
+    expect(game.getState().netScore).toBe(50);
   });
 });

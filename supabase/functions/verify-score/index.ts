@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     sizeId?: string;
     mode?: string;
     headings?: string[];
+    headingsAi?: string[];
     claimedScore?: number;
     claimedLevel?: number;
     displayName?: string;
@@ -84,6 +85,7 @@ Deno.serve(async (req) => {
     sizeId: body.sizeId as "small" | "medium" | "large",
     mode: String(body.mode ?? "solo"),
     headings: body.headings as ("Up" | "Down" | "Left" | "Right")[],
+    headingsAi: body.headingsAi as ("Up" | "Down" | "Left" | "Right")[] | undefined,
     claimedScore: Number(body.claimedScore),
     claimedLevel: Number(body.claimedLevel),
   };
@@ -113,6 +115,10 @@ Deno.serve(async (req) => {
     display_name: displayName,
   });
 
+  const headingsStore = payload.headingsAi
+    ? { human: payload.headings, ai: payload.headingsAi }
+    : payload.headings;
+
   const { data: row, error: insertError } = await admin
     .from("scores")
     .insert({
@@ -123,7 +129,7 @@ Deno.serve(async (req) => {
       size_id: payload.sizeId,
       mode: payload.mode,
       seed: payload.seed,
-      headings: payload.headings,
+      headings: headingsStore,
       verified: true,
     })
     .select("id, score, level, created_at")
