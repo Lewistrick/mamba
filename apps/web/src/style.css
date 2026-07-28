@@ -77,6 +77,10 @@ body {
   gap: 0.45rem;
 }
 
+.size-field[hidden] {
+  display: none;
+}
+
 .size-field legend {
   padding: 0 0.35rem;
   color: var(--muted);
@@ -93,19 +97,6 @@ body {
 
 .size-field label span {
   margin-left: auto;
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-.sound-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.key-hint {
   color: var(--muted);
   font-size: 0.75rem;
 }
@@ -197,14 +188,15 @@ body {
   gap: 0.4rem;
 }
 
-#lb-period {
+#lb-period,
+#lb-scope {
   font: inherit;
   font-size: 0.75rem;
   color: var(--text);
   background: #070a12;
   border: 1px solid var(--border);
   padding: 0.2rem 0.3rem;
-  width: 100%;
+  flex: 1;
 }
 
 .auth-panel {

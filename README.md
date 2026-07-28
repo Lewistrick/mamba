@@ -9,7 +9,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - Deterministic headless engine with **replay verification** (solo + AI)
 - Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P)
 - **Solo** or **vs AI** (easy / medium / hard) on a shared board; scoreboard uses **net** (you − AI)
-- **Local + global leaderboards** filtered by board size, play mode (menu), and period
+- **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period
 - Preferences in `localStorage`; guest play always works offline
 
 See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-5-ai.md`](.cursor/plans/phase-5-ai.md).
@@ -25,7 +25,7 @@ See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full
 | Survival | vs AI only: every second while alive, score `+level` (HUD: Time) |
 | Win bonus | vs AI only: when the AI dies and you survive, score `+100 × level` |
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
-| Yellow pellet | Spawns on molt (lime); after 5 ticks TTL = Dijkstra + 5 (walls + body blocked), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
+| Yellow pellet | Spawns on molt (lime); vs AI: equidistant Dijkstra from both heads; after 5 ticks TTL = Dijkstra + 5 (vs AI: farther head), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
 | Death | Hit border, self, red wall, or the other snake (vs AI) |
 | vs AI | Shared board; either death ends the run; saved score = your score − AI score |

@@ -31,4 +31,4 @@ export {
   type SnakePlayerState,
   type YellowPellet,
 } from "./types.ts";
-export { dijkstraDistance } from "./pathfinding.ts";
+export { dijkstraDistance, dijkstraDistancesFrom } from "./pathfinding.ts";

@@ -122,3 +122,48 @@ export function dijkstraDistance(
 
   return null;
 }
+
+/**
+ * Shortest-path distances from `start` to every reachable cell (BFS).
+ *
+ * The start cell is always included at distance 0 even if listed in `blocked`.
+ * Other blocked cells are impassable.
+ *
+ * @param width - Field width.
+ * @param height - Field height.
+ * @param start - Path origin (typically a snake head).
+ * @param blocked - Set of `"x,y"` keys that cannot be entered.
+ * @returns Map of cell key → distance in cells.
+ */
+export function dijkstraDistancesFrom(
+  width: number,
+  height: number,
+  start: Point,
+  blocked: ReadonlySet<string>,
+): Map<string, number> {
+  const startKey = `${start.x},${start.y}`;
+  const dist = new Map<string, number>([[startKey, 0]]);
+  const queue: Point[] = [start];
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const curKey = `${cur.x},${cur.y}`;
+    const curDist = dist.get(curKey)!;
+    for (const delta of NEIGHBORS) {
+      const nx = cur.x + delta.x;
+      const ny = cur.y + delta.y;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      const nKey = `${nx},${ny}`;
+      if (blocked.has(nKey) || dist.has(nKey)) {
+        continue;
+      }
+      dist.set(nKey, curDist + 1);
+      queue.push({ x: nx, y: ny });
+    }
+  }
+
+  return dist;
+}
+

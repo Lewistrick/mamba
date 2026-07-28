@@ -3,7 +3,7 @@
  */
 
 import { createRng, randomInt } from "./rng.ts";
-import { dijkstraDistance } from "./pathfinding.ts";
+import { dijkstraDistance, dijkstraDistancesFrom } from "./pathfinding.ts";
 import {
   MEDIUM_SIZE,
   START_LENGTH,
@@ -635,8 +635,7 @@ export class Game {
         }
       }
 
-      let bestDist: number | null = null;
-      let bestHead: Point | null = null;
+      const headDistances: { head: Point; distance: number }[] = [];
       for (const player of this.players) {
         if (!player.alive) {
           continue;
@@ -649,19 +648,33 @@ export class Game {
           this.yellowPellet.pos,
           blocked,
         );
-        if (distance !== null && (bestDist === null || distance < bestDist)) {
-          bestDist = distance;
-          bestHead = head;
+        if (distance !== null) {
+          headDistances.push({ head, distance });
         }
       }
 
-      const ttl =
-        bestDist !== null && bestDist > 0 && bestHead !== null
-          ? bestDist + YELLOW_GRACE_TICKS
-          : unreachableYellowTtl(
-              bestHead ?? this.players[0].body[0],
-              this.yellowPellet.pos,
-            );
+      let ttl: number;
+      if (
+        this.playerCount === 2 &&
+        headDistances.length === 2
+      ) {
+        // Fair timer: enough ticks for the farther snake (spawn aims for equal dists).
+        ttl = Math.max(headDistances[0].distance, headDistances[1].distance) +
+          YELLOW_GRACE_TICKS;
+      } else if (headDistances.length > 0) {
+        const best = headDistances.reduce((a, b) =>
+          a.distance < b.distance ? a : b,
+        );
+        ttl =
+          best.distance > 0
+            ? best.distance + YELLOW_GRACE_TICKS
+            : unreachableYellowTtl(best.head, this.yellowPellet.pos);
+      } else {
+        ttl = unreachableYellowTtl(
+          this.players[0].body[0],
+          this.yellowPellet.pos,
+        );
+      }
       this.yellowPellet = {
         ...this.yellowPellet,
         graceTicksRemaining: 0,
@@ -780,7 +793,8 @@ export class Game {
     if (this.yellowPellet !== null) {
       return;
     }
-    const pos = this.pickEmptyCell();
+    const pos =
+      this.playerCount === 2 ? this.pickFairYellowCell() : this.pickEmptyCell();
     if (pos === null) {
       return;
     }
@@ -794,6 +808,82 @@ export class Game {
       ttl: null,
       graceTicksRemaining: YELLOW_GRACE_TICKS,
     };
+  }
+
+  /**
+   * Picks an empty cell as fair as possible for both living snakes (vs AI).
+   *
+   * Prefers cells with equal Dijkstra distance from both heads, then the
+   * smallest such distance. Falls back to minimizing `|d0 − d1|`, then
+   * {@link pickEmptyCell} if nothing is reachable by both.
+   *
+   * @returns Fair empty cell, or null if the field is full.
+   */
+  private pickFairYellowCell(): Point | null {
+    const living = this.players.filter((p) => p.alive);
+    if (living.length < 2) {
+      return this.pickEmptyCell();
+    }
+
+    const blocked = new Set<string>(this.walls);
+    for (const player of this.players) {
+      if (!player.alive) {
+        continue;
+      }
+      for (const segment of player.body) {
+        blocked.add(key(segment));
+      }
+    }
+
+    const dist0 = dijkstraDistancesFrom(
+      this.width,
+      this.height,
+      living[0].body[0],
+      blocked,
+    );
+    const dist1 = dijkstraDistancesFrom(
+      this.width,
+      this.height,
+      living[1].body[0],
+      blocked,
+    );
+
+    let bestDiff = Number.POSITIVE_INFINITY;
+    let bestDist = Number.POSITIVE_INFINITY;
+    const tied: Point[] = [];
+
+    for (let y = 0; y < this.height; y += 1) {
+      for (let x = 0; x < this.width; x += 1) {
+        const p = { x, y };
+        const k = key(p);
+        if (this.walls.has(k) || this.isSnakeOccupied(p)) {
+          continue;
+        }
+        if (this.bluePellets.has(k) || this.greenPellets.has(k)) {
+          continue;
+        }
+        const d0 = dist0.get(k);
+        const d1 = dist1.get(k);
+        if (d0 === undefined || d1 === undefined || d0 === 0 || d1 === 0) {
+          continue;
+        }
+        const diff = Math.abs(d0 - d1);
+        const dist = diff === 0 ? d0 : Math.max(d0, d1);
+        if (diff < bestDiff || (diff === bestDiff && dist < bestDist)) {
+          bestDiff = diff;
+          bestDist = dist;
+          tied.length = 0;
+          tied.push(p);
+        } else if (diff === bestDiff && dist === bestDist) {
+          tied.push(p);
+        }
+      }
+    }
+
+    if (tied.length === 0) {
+      return this.pickEmptyCell();
+    }
+    return tied[randomInt(this.rng, 0, tied.length - 1)];
   }
 
   /**

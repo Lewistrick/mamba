@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dijkstraDistance } from "./pathfinding.ts";
+import { dijkstraDistance, dijkstraDistancesFrom } from "./pathfinding.ts";
 
 describe("dijkstraDistance", () => {
   it("returns 0 when start equals goal", () => {
@@ -38,5 +38,25 @@ describe("dijkstraDistance", () => {
     expect(
       dijkstraDistance(3, 1, { x: 0, y: 0 }, { x: 2, y: 0 }, blocked),
     ).toBe(2);
+  });
+});
+
+describe("dijkstraDistancesFrom", () => {
+  it("maps distances from the start across an empty grid", () => {
+    const dist = dijkstraDistancesFrom(4, 1, { x: 0, y: 0 }, new Set());
+    expect(dist.get("0,0")).toBe(0);
+    expect(dist.get("3,0")).toBe(3);
+  });
+
+  it("does not enter blocked cells", () => {
+    const dist = dijkstraDistancesFrom(
+      3,
+      1,
+      { x: 0, y: 0 },
+      new Set(["1,0"]),
+    );
+    expect(dist.get("0,0")).toBe(0);
+    expect(dist.has("1,0")).toBe(false);
+    expect(dist.has("2,0")).toBe(false);
   });
 });

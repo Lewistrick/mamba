@@ -71,9 +71,9 @@ interface PendingScore {
 const canvasEl = document.querySelector<HTMLCanvasElement>("#game");
 const stageEl = document.querySelector<HTMLElement>("#stage");
 const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
-const soundToggleEl = document.querySelector<HTMLInputElement>("#sound-enabled");
 const statusNode = document.querySelector<HTMLElement>("#status");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
+const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
 const aiDifficultyField = document.querySelector<HTMLElement>("#ai-difficulty-field");
@@ -105,9 +105,9 @@ if (
   !canvasEl ||
   !stageEl ||
   !playBtnEl ||
-  !soundToggleEl ||
   !statusNode ||
   !lbPeriodSelect ||
+  !lbScopeSelect ||
   !lbList ||
   !lbEmpty ||
   !aiDifficultyField ||
@@ -136,9 +136,9 @@ if (
 const canvas = canvasEl;
 const stage = stageEl;
 const playBtn = playBtnEl;
-const soundToggle = soundToggleEl;
 const statusEl = statusNode;
 const periodSelect = lbPeriodSelect;
+const scopeSelect = lbScopeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
 const aiDifficultyFieldEl = aiDifficultyField;
@@ -207,9 +207,9 @@ function syncMenuFromSettings(): void {
     input.checked = input.value === settings.aiDifficulty;
   }
   aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
-  soundToggle.checked = settings.soundEnabled;
   sounds.setMuted(!settings.soundEnabled);
   guestNameEl.value = settings.playerName;
+  scopeSelect.value = settings.leaderboardScope;
 }
 
 /**
@@ -274,10 +274,12 @@ function selectedPeriod(): LeaderboardPeriod {
 }
 
 /**
- * Whether to show the global board (signed-in + Supabase) or local.
+ * Reads local/global scope from the select control.
+ *
+ * @returns Scope id.
  */
-function useGlobalBoard(): boolean {
-  return Boolean(supabaseConfigured && signedInEmail);
+function selectedScope(): "local" | "global" {
+  return scopeSelect.value === "global" ? "global" : "local";
 }
 
 /**
@@ -287,7 +289,7 @@ function persistFromMenu(): void {
   settings.sizeId = selectedSizeId();
   settings.playMode = selectedPlayMode();
   settings.aiDifficulty = selectedAiDifficulty();
-  settings.soundEnabled = soundToggle.checked;
+  settings.leaderboardScope = selectedScope();
   aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
   sounds.setMuted(!settings.soundEnabled);
   saveSettings(settings);
@@ -353,9 +355,17 @@ async function refreshLeaderboard(): Promise<void> {
   const sizeId = selectedSizeId();
   const period = selectedPeriod();
   const mode = currentMode();
+  const scope = selectedScope();
 
-  if (!useGlobalBoard()) {
+  if (scope === "local") {
     renderBoard(getBoard(sizeId, mode, period));
+    return;
+  }
+
+  if (!supabaseConfigured) {
+    emptyEl.hidden = false;
+    emptyEl.textContent = "Configure Supabase for global scores";
+    listEl.replaceChildren();
     return;
   }
 
@@ -672,12 +682,14 @@ function togglePause(): void {
 }
 
 /**
- * Toggles sound on/off and syncs the menu checkbox.
+ * Toggles sound on/off via the S hotkey.
  */
 function toggleSound(): void {
-  soundToggle.checked = !soundToggle.checked;
-  persistFromMenu();
+  settings.soundEnabled = !settings.soundEnabled;
+  saveSettings(settings);
+  sounds.setMuted(!settings.soundEnabled);
   sounds.resume();
+  setStatus(settings.soundEnabled ? "Sound on" : "Sound off");
 }
 
 /**
@@ -820,12 +832,12 @@ guestFormEl.addEventListener("submit", (event) => {
   void saveGuestScore();
 });
 
-soundToggle.addEventListener("change", () => {
-  persistFromMenu();
-  sounds.resume();
+periodSelect.addEventListener("change", () => {
+  void refreshLeaderboard();
 });
 
-periodSelect.addEventListener("change", () => {
+scopeSelect.addEventListener("change", () => {
+  persistFromMenu();
   void refreshLeaderboard();
 });
 

@@ -28,7 +28,7 @@ AI lives in [`packages/engine/src/ai.ts`](../../packages/engine/src/ai.ts) (`AiB
 
 - Menu: Solo / vs AI + Easy/Medium/Hard
 - Cyan AI snake; HUD: You → AI → Time → Net (plus level)
-- Scores list follows menu mode/size; period filter only (all-time / weekly / daily)
+- Scores list follows menu mode/size; local/global + period filters
 - Pause (`P`) freezes AI ticks too
 
 ## Deploy note

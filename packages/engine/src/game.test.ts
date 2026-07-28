@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { bluePelletValue, Game, greenPelletValue } from "./game.ts";
+import { dijkstraDistance } from "./pathfinding.ts";
 import { createRng, randomInt } from "./rng.ts";
 import type { Direction, Point } from "./types.ts";
 
@@ -224,6 +225,76 @@ describe("Game", () => {
     // Green removed; two replacement spawns (blue and/or green-from-wall).
     expect(state.greenPellets.some((p) => p.x === 6 && p.y === 5)).toBe(false);
     expect(state.bluePellets.length + state.greenPellets.length).toBe(2);
+  });
+
+  it("spawns versus yellow equidistant from both heads", () => {
+    const game = Game.versusAi("small", 99);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        level: number;
+        pelletsEatenThisLife: number;
+        moltThreshold: number;
+        inputQueue: unknown[];
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+      yellowPellet: unknown;
+      spawnYellow: (level: number) => void;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    g.yellowPellet = null;
+    g.players[0].body = [
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+      { x: 0, y: 5 },
+      { x: 0, y: 4 },
+      { x: 0, y: 3 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    g.players[1].body = [
+      { x: 16, y: 5 },
+      { x: 17, y: 5 },
+      { x: 18, y: 5 },
+      { x: 19, y: 5 },
+      { x: 19, y: 4 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+
+    g.spawnYellow(2);
+    const yellow = game.getState().yellowPellet;
+    expect(yellow).not.toBeNull();
+    const blocked = new Set<string>();
+    for (const p of g.players) {
+      for (const s of p.body) {
+        blocked.add(`${s.x},${s.y}`);
+      }
+    }
+    const d0 = dijkstraDistance(
+      20,
+      11,
+      g.players[0].body[0],
+      yellow!.pos,
+      blocked,
+    );
+    const d1 = dijkstraDistance(
+      20,
+      11,
+      g.players[1].body[0],
+      yellow!.pos,
+      blocked,
+    );
+    expect(d0).not.toBeNull();
+    expect(d1).not.toBeNull();
+    expect(d0).toBe(d1);
   });
 
   it("spawns two pellets when eating yellow", () => {
