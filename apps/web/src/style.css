@@ -330,6 +330,10 @@ body {
   margin: 0;
   color: var(--text);
   font-size: 1rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  white-space: pre;
+  text-align: left;
+  line-height: 1.45;
 }
 
 .go-save-status {

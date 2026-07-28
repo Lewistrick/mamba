@@ -27,7 +27,7 @@ AI lives in [`packages/engine/src/ai.ts`](../../packages/engine/src/ai.ts) (`AiB
 ## Client
 
 - Menu: Solo / vs AI + Easy/Medium/Hard
-- Cyan AI snake; HUD shows You / AI / Net / Surv (+level/s)
+- Cyan AI snake; HUD: You → AI → Time → Net (plus level)
 - Leaderboard mode filter beside scope/period
 - Pause (`P`) freezes AI ticks too
 

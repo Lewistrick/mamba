@@ -22,7 +22,7 @@ See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full
 | Start | Snake length 5 |
 | Move | One cell per tick; head advances, tail removed unless you just ate |
 | Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn **one** replacement |
-| Survival | Every second while alive, score `+level` (shown as Surv in the HUD) |
+| Survival | Every second while alive, score `+level` (HUD: Time bonus) |
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
 | Yellow pellet | Spawns on molt (lime); after 5 ticks TTL = Dijkstra + 5 (walls + body blocked), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |

@@ -165,14 +165,14 @@ export class Renderer {
     this.drawFooter();
 
     if (overlay === "paused") {
-      this.drawOverlay("paused", state?.score ?? 0);
+      this.drawOverlay("paused", state);
     } else if (overlay === "gameover" || state?.status === "gameover") {
-      this.drawOverlay("gameover", state?.score ?? 0, state?.survivalScore ?? 0);
+      this.drawOverlay("gameover", state);
     }
   }
 
   /**
-   * Draws the top status bar (title, blue count, level, score / versus net).
+   * Draws the top status bar (title, level, score / versus stats).
    */
   private drawHud(state: GameState | null): void {
     const { ctx } = this;
@@ -191,44 +191,40 @@ export class Renderer {
     ctx.fillText("MAMBA", 16, cy);
 
     const score = state?.score ?? 0;
-    const blueCount = state?.bluePellets.length ?? 0;
     const level = state?.level ?? 1;
     const versus = (state?.players.length ?? 1) > 1;
+    const timeBonus = state?.survivalScore ?? 0;
 
-    const survival = state?.survivalScore ?? 0;
-    const survRate = `+${level}/s`;
-
+    // Packed from the right so left-to-right order matches the labels below.
     let cursor = cssW - 10;
     if (versus && state) {
       cursor = this.drawHudStat(cursor, cy, `Net : ${state.netScore}`);
       cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
+      cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `AI : ${state.players[1]?.score ?? 0}`);
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
-      cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `Surv : ${survival} ${survRate}`);
     } else {
       cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
       cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `Surv : ${survival} ${survRate}`);
-      cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `Level : ${level}`);
+      cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
     }
     cursor -= 10;
 
     ctx.font = "bold 14px 'IBM Plex Mono', monospace";
-    const countLabel = String(blueCount);
-    const countWidth = Math.max(28, Math.ceil(ctx.measureText(countLabel).width) + 12);
-    cursor -= countWidth;
+    const levelLabel = String(level);
+    const levelWidth = Math.max(28, Math.ceil(ctx.measureText(levelLabel).width) + 12);
+    cursor -= levelWidth;
     ctx.fillStyle = COLORS.hudBadge;
-    ctx.fillRect(cursor, 8, countWidth, HUD_H - 16);
+    ctx.fillRect(cursor, 8, levelWidth, HUD_H - 16);
     ctx.fillStyle = COLORS.hudText;
     ctx.textAlign = "center";
-    ctx.fillText(countLabel, cursor + countWidth / 2, cy);
+    ctx.fillText(levelLabel, cursor + levelWidth / 2, cy);
 
-    ctx.fillStyle = COLORS.blue;
+    ctx.fillStyle = COLORS.hudMuted;
     ctx.textAlign = "right";
-    ctx.fillText("@@", cursor - 6, cy);
+    ctx.fillText("Lv", cursor - 6, cy);
     ctx.textAlign = "left";
   }
 
@@ -527,12 +523,11 @@ export class Renderer {
 
   /**
    * Draws a full-field status overlay (game over or pause).
+   *
+   * @param kind - Overlay mode.
+   * @param state - Engine state used for the score breakdown.
    */
-  private drawOverlay(
-    kind: "gameover" | "paused",
-    score: number,
-    survivalScore = 0,
-  ): void {
+  private drawOverlay(kind: "gameover" | "paused", state: GameState | null): void {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
@@ -550,14 +545,64 @@ export class Renderer {
       ctx.fillStyle = COLORS.white;
       ctx.fillText("Press P to resume", cx, cy + 24);
     } else {
-      const pellets = score - survivalScore;
-      ctx.fillText("GAME OVER", cx, cy - 20);
+      ctx.fillText("GAME OVER", cx, cy - 48);
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      ctx.fillText(`Score: ${score} (pellets ${pellets} + surv ${survivalScore})`, cx, cy + 16);
-      ctx.fillText("Press Play or Enter to try again", cx, cy + 40);
+      const lines = this.gameOverScoreLines(state);
+      let y = cy - 8;
+      for (const line of lines) {
+        ctx.fillText(line, cx, y);
+        y += 22;
+      }
+      ctx.fillText("Press Play or Enter to try again", cx, y + 12);
     }
     ctx.textAlign = "left";
+  }
+
+  /**
+   * Builds game-over score lines matching the HTML overlay layout.
+   *
+   * @param state - Final state.
+   * @returns Display lines.
+   */
+  private gameOverScoreLines(state: GameState | null): string[] {
+    if (!state) {
+      return ["Score 0"];
+    }
+    if (state.players.length > 1) {
+      const you = state.players[0].score;
+      const ai = state.players[1].score;
+      const time = state.players[0].survivalScore;
+      const net = state.netScore;
+      const width = Math.max(
+        String(you).length,
+        String(ai).length,
+        String(time).length,
+        String(net).length,
+      );
+      const num = (n: number): string => String(n).padStart(width, " ");
+      return [
+        `You    ${num(you)}`,
+        `- AI   ${num(ai)}`,
+        `Time   ${num(time)}`,
+        `+`,
+        `Net    ${num(net)}`,
+      ];
+    }
+    const time = state.survivalScore;
+    const pellets = state.score - time;
+    const width = Math.max(
+      String(pellets).length,
+      String(time).length,
+      String(state.score).length,
+    );
+    const num = (n: number): string => String(n).padStart(width, " ");
+    return [
+      `Pellets ${num(pellets)}`,
+      `Time    ${num(time)}`,
+      `+`,
+      `Score   ${num(state.score)}`,
+    ];
   }
 
   /**

@@ -626,6 +626,52 @@ function startGame(): void {
 }
 
 /**
+ * Formats the game-over score breakdown for the overlay.
+ *
+ * Versus (separate lines): own score, − AI, time bonus, +, net.
+ *
+ * @param final - Final engine state.
+ * @returns Multi-line summary.
+ */
+function formatGameOverScore(final: GameState): string {
+  if (final.players.length > 1) {
+    const you = final.players[0].score;
+    const ai = final.players[1].score;
+    const time = final.players[0].survivalScore;
+    const net = final.netScore;
+    const width = Math.max(
+      String(you).length,
+      String(ai).length,
+      String(time).length,
+      String(net).length,
+    );
+    const num = (n: number): string => String(n).padStart(width, " ");
+    return [
+      `You    ${num(you)}`,
+      `- AI   ${num(ai)}`,
+      `Time   ${num(time)}`,
+      `+`,
+      `Net    ${num(net)}`,
+    ].join("\n");
+  }
+
+  const time = final.survivalScore;
+  const pellets = final.score - time;
+  const width = Math.max(
+    String(pellets).length,
+    String(time).length,
+    String(final.score).length,
+  );
+  const num = (n: number): string => String(n).padStart(width, " ");
+  return [
+    `Pellets ${num(pellets)}`,
+    `Time    ${num(time)}`,
+    `+`,
+    `Score   ${num(final.score)}`,
+  ].join("\n");
+}
+
+/**
  * Handles end-of-run UI and score save flow.
  *
  * @param final - Final engine state.
@@ -650,12 +696,9 @@ function onGameOver(final: GameState, run: Game): void {
     mode,
   };
 
-  const survival = final.survivalScore;
-  const pelletScore = final.score - survival;
-  const summary =
-    final.players.length > 1
-      ? `You ${final.players[0].score} (pellets ${final.players[0].score - final.players[0].survivalScore} + surv ${final.players[0].survivalScore}) · AI ${final.players[1].score} · Net ${score}`
-      : `Score ${score} (pellets ${pelletScore} + surv ${survival})`;
+  const summary = formatGameOverScore(final);
+  const shortStatus =
+    final.players.length > 1 ? `Net ${score}` : `Score ${score}`;
 
   if (signedInEmail && profile?.usernameSet && score > 0) {
     showGameOverOverlay(pending, "account");
@@ -664,10 +707,10 @@ function onGameOver(final: GameState, run: Game): void {
   } else if (!signedInEmail && qualifiesForBoard(score, sizeId, mode)) {
     showGameOverOverlay(pending, "guest");
     goScoreEl.textContent = summary;
-    setStatus(summary);
+    setStatus(shortStatus);
   } else {
     hideGameOverOverlay();
-    setStatus(summary);
+    setStatus(shortStatus);
   }
   void refreshLeaderboard();
 }
