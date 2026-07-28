@@ -11,6 +11,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - **Solo** or **vs AI** (easy / medium / hard) on a shared board; scoreboard uses **net** (you − AI)
 - **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period
 - Signed-in **Profile** page: change username/password; play counts per size/mode; click a row for score-over-time chart (dots + 10-game rolling average)
+- **Help** page (menu): remake story plus controls, scoring, and modes
 - Preferences in `localStorage`; guest play always works offline
 
 See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-5-ai.md`](.cursor/plans/phase-5-ai.md).

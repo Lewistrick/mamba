@@ -69,7 +69,7 @@ const KEY_TO_DIR: Record<string, Direction> = {
   ArrowRight: "Right",
 };
 
-type Screen = "menu" | "playing" | "gameover" | "profile";
+type Screen = "menu" | "playing" | "gameover" | "profile" | "help";
 
 interface PendingScore {
   score: number;
@@ -113,9 +113,12 @@ const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
 const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
+const helpBtn = document.querySelector<HTMLButtonElement>("#btn-help");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
 const gameShell = document.querySelector<HTMLElement>("#game-shell");
 const profilePage = document.querySelector<HTMLElement>("#profile-page");
+const helpPage = document.querySelector<HTMLElement>("#help-page");
+const helpBackBtn = document.querySelector<HTMLButtonElement>("#btn-help-back");
 const profileBackBtn = document.querySelector<HTMLButtonElement>("#btn-profile-back");
 const profileUsernameForm = document.querySelector<HTMLFormElement>("#profile-username-form");
 const profileUsernameInput = document.querySelector<HTMLInputElement>("#profile-username");
@@ -162,8 +165,11 @@ if (
   !guestScoreForm ||
   !guestNameInput ||
   !playAgainBtn ||
+  !helpBtn ||
   !gameShell ||
   !profilePage ||
+  !helpPage ||
+  !helpBackBtn ||
   !profileBackBtn ||
   !profileUsernameForm ||
   !profileUsernameInput ||
@@ -209,8 +215,11 @@ const goSaveStatusEl = goSaveStatus;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
+const helpBtnEl = helpBtn;
 const gameShellEl = gameShell;
 const profilePageEl = profilePage;
+const helpPageEl = helpPage;
+const helpBackEl = helpBackBtn;
 const profileBackEl = profileBackBtn;
 const profileUsernameFormEl = profileUsernameForm;
 const profileUsernameEl = profileUsernameInput;
@@ -563,15 +572,27 @@ function setProfileMsg(
 }
 
 /**
- * Returns from the profile page to the game shell.
+ * Returns from the profile or help page to the game shell.
  */
 function showGameShell(): void {
   profilePageEl.hidden = true;
+  helpPageEl.hidden = true;
   gameShellEl.hidden = false;
   screen = game && state?.status === "gameover" ? "gameover" : "menu";
   if (screen === "menu") {
     paused = false;
   }
+}
+
+/**
+ * Opens the help page (from game over). Keeps the overlay score state intact.
+ */
+function openHelpPage(): void {
+  paused = true;
+  screen = "help";
+  gameShellEl.hidden = true;
+  profilePageEl.hidden = true;
+  helpPageEl.hidden = false;
 }
 
 /**
@@ -585,6 +606,7 @@ async function openProfilePage(): Promise<void> {
   paused = true;
   screen = "profile";
   gameShellEl.hidden = true;
+  helpPageEl.hidden = true;
   profilePageEl.hidden = false;
   profileUsernameEl.value = profile?.displayName ?? "";
   profilePasswordEl.value = "";
@@ -865,7 +887,7 @@ function startGame(): void {
     accountUsernameEl.focus();
     return;
   }
-  if (screen === "profile") {
+  if (screen === "profile" || screen === "help") {
     showGameShell();
   }
   hideGameOverOverlay();
@@ -975,7 +997,7 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (screen === "profile") {
+  if (screen === "profile" || screen === "help") {
     if (event.key === "Escape") {
       event.preventDefault();
       showGameShell();
@@ -1028,7 +1050,7 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
-  if (screen === "profile") {
+  if (screen === "profile" || screen === "help") {
     requestAnimationFrame(frame);
     return;
   }
@@ -1246,6 +1268,14 @@ profileBtnEl.addEventListener("click", () => {
 });
 
 profileBackEl.addEventListener("click", () => {
+  showGameShell();
+});
+
+helpBtnEl.addEventListener("click", () => {
+  openHelpPage();
+});
+
+helpBackEl.addEventListener("click", () => {
   showGameShell();
 });
 

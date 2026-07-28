@@ -51,7 +51,8 @@ body {
 }
 
 #game-shell[hidden],
-#profile-page[hidden] {
+#profile-page[hidden],
+#help-page[hidden] {
   display: none !important;
 }
 
@@ -81,6 +82,13 @@ body {
   margin: -0.4rem 0 0;
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+#btn-help {
+  align-self: flex-start;
+  margin-top: -0.15rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
 }
 
 .size-field {
@@ -467,6 +475,47 @@ body {
   flex-direction: column;
   gap: 1rem;
   padding: 0.25rem 0 1rem;
+}
+
+.help-page {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.25rem 0 1rem;
+}
+
+.help-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.help-content p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.help-list li + li {
+  margin-top: 0.35rem;
+}
+
+.help-list code {
+  font-size: 0.85em;
+  color: var(--accent-blue);
 }
 
 .profile-header {
