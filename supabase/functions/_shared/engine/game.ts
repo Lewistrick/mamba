@@ -44,6 +44,7 @@ interface PlayerInternal {
   direction: Direction;
   inputQueue: Direction[];
   score: number;
+  survivalScore: number;
   level: number;
   pelletsEatenThisLife: number;
   moltThreshold: number;
@@ -348,6 +349,7 @@ export class Game {
           }
         : null,
       score: p0.score,
+      survivalScore: p0.survivalScore,
       level: p0.level,
       pelletsEatenThisLife: p0.pelletsEatenThisLife,
       moltThreshold: p0.moltThreshold,
@@ -405,6 +407,7 @@ export class Game {
       direction,
       inputQueue: [],
       score: 0,
+      survivalScore: 0,
       level: 1,
       pelletsEatenThisLife: 0,
       moltThreshold: randomInt(this.rng, 12, 22),
@@ -424,6 +427,7 @@ export class Game {
       body: player.body.map((p) => ({ ...p })),
       direction: player.direction,
       score: player.score,
+      survivalScore: player.survivalScore,
       level: player.level,
       pelletsEatenThisLife: player.pelletsEatenThisLife,
       moltThreshold: player.moltThreshold,
@@ -440,6 +444,7 @@ export class Game {
    */
   private advanceSimultaneous(): GameState {
     this.decayYellow();
+    this.applySurvivalBonus();
 
     const livingIndexes = this.players
       .map((p, i) => (p.alive ? i : -1))
@@ -541,6 +546,22 @@ export class Game {
     }
 
     return this.getState();
+  }
+
+  /**
+   * Each real-time second (10 ticks), living snakes gain `level` points.
+   */
+  private applySurvivalBonus(): void {
+    if (this.tickCount === 0 || this.tickCount % TICKS_PER_SECOND !== 0) {
+      return;
+    }
+    for (const player of this.players) {
+      if (!player.alive) {
+        continue;
+      }
+      player.score += player.level;
+      player.survivalScore += player.level;
+    }
   }
 
   /**

@@ -32,6 +32,8 @@ export interface SnakePlayerState {
   body: readonly Point[];
   direction: Direction;
   score: number;
+  /** Points earned from surviving (+level each second). */
+  survivalScore: number;
   level: number;
   pelletsEatenThisLife: number;
   moltThreshold: number;
@@ -73,6 +75,8 @@ export interface GameState {
   yellowPellet: YellowPellet | null;
   /** Player 0 score. */
   score: number;
+  /** Player 0 survival bonus total (+level each second). */
+  survivalScore: number;
   /** Player 0 level. */
   level: number;
   pelletsEatenThisLife: number;

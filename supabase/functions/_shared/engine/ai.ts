@@ -31,7 +31,8 @@ const DIRS: Direction[] = ["Up", "Down", "Left", "Right"];
 const MEDIUM_REACTION_MAX = 3;
 const MEDIUM_STICKY_REPATH = 8;
 const MEDIUM_SWITCH_RATIO = 1.35;
-const HARD_LOOKAHEAD = 6;
+/** Hard only aborts a chase into pockets smaller than this. */
+const HARD_MIN_CHASE_SPACE = 3;
 
 /**
  * Builds a blocked-cell set for pathfinding from the AI's perspective.
@@ -505,7 +506,7 @@ export class AiBrain {
   }
 
   /**
-   * Hard: short lookahead scoring pellets, human proximity, and free space.
+   * Hard: greedy pellet chase (points first); light survival only to avoid instant death.
    */
   private decideHard(
     state: GameState,
@@ -515,72 +516,116 @@ export class AiBrain {
     const head = self.body[0];
     const human = state.players[0];
     const targets = pelletTargets(state, true);
-    let bestDir = self.direction;
-    let bestScore = Number.NEGATIVE_INFINITY;
 
-    for (const dir of DIRS) {
-      if (dir === OPPOSITE[self.direction]) {
-        continue;
+    const scoreTarget = (t: { pos: Point; value: number }): number | null => {
+      const dist = dijkstraDistance(state.width, state.height, head, t.pos, blocked);
+      if (dist === null || dist <= 0) {
+        return null;
       }
-      if (isImmediateDeath(state, self, dir, blocked)) {
-        continue;
+      const yellow = state.yellowPellet;
+      const isYellow =
+        yellow !== null && t.pos.x === yellow.pos.x && t.pos.y === yellow.pos.y;
+      if (isYellow && yellow.ttl !== null && dist > yellow.ttl) {
+        return null;
       }
-      const next = { x: head.x + DELTA[dir].x, y: head.y + DELTA[dir].y };
-      let score = floodSpace(state, next, blocked, 80) * 0.35;
-
-      for (const t of targets) {
-        const dist = dijkstraDistance(state.width, state.height, next, t.pos, blocked);
-        if (dist === null) {
-          continue;
-        }
-        score += t.value / (dist + 1);
-        if (human?.alive) {
-          const humanDist = Math.abs(human.body[0].x - t.pos.x) + Math.abs(human.body[0].y - t.pos.y);
-          const myDist = dist;
-          if (myDist + 1 < humanDist) {
-            score += 2;
-          } else if (myDist > humanDist + 2) {
-            score -= 1;
-          }
-        }
-      }
-
+      let score = (t.value * 4) / dist;
       if (human?.alive) {
-        const sep =
-          Math.abs(human.body[0].x - next.x) + Math.abs(human.body[0].y - next.y);
-        if (sep <= 2) {
-          score -= 3;
+        const humanDist =
+          Math.abs(human.body[0].x - t.pos.x) + Math.abs(human.body[0].y - t.pos.y);
+        if (dist < humanDist) {
+          score += 8;
+        } else if (dist > humanDist + 1) {
+          score -= 2;
         }
       }
+      return score;
+    };
 
-      // Light multi-step preference along the same heading.
-      let cursor = next;
-      let lookBlocked = new Set(blocked);
-      lookBlocked.add(`${head.x},${head.y}`);
-      for (let step = 1; step < HARD_LOOKAHEAD; step += 1) {
-        cursor = { x: cursor.x + DELTA[dir].x, y: cursor.y + DELTA[dir].y };
-        if (
-          cursor.x < 0 ||
-          cursor.y < 0 ||
-          cursor.x >= state.width ||
-          cursor.y >= state.height ||
-          lookBlocked.has(`${cursor.x},${cursor.y}`)
-        ) {
-          score -= 4;
-          break;
-        }
-        score += 0.15;
+    this.ticksSinceRepath += 1;
+    const stickyAlive =
+      this.stickyTarget !== null &&
+      targets.some(
+        (t) => t.pos.x === this.stickyTarget!.x && t.pos.y === this.stickyTarget!.y,
+      );
+
+    let stickyScore =
+      stickyAlive && this.stickyTarget
+        ? scoreTarget({
+            pos: this.stickyTarget,
+            value:
+              targets.find(
+                (t) =>
+                  t.pos.x === this.stickyTarget!.x && t.pos.y === this.stickyTarget!.y,
+              )?.value ?? 1,
+          })
+        : null;
+
+    let best: { pos: Point; value: number; score: number } | null = null;
+    for (const t of targets) {
+      const score = scoreTarget(t);
+      if (score === null) {
+        continue;
       }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestDir = dir;
+      if (!best || score > best.score) {
+        best = { ...t, score };
       }
     }
 
-    if (isImmediateDeath(state, self, bestDir, blocked)) {
+    // Switch target more eagerly than medium (greed over stickiness).
+    if (
+      !stickyAlive ||
+      stickyScore === null ||
+      this.ticksSinceRepath >= 5 ||
+      (best !== null && best.score > (stickyScore ?? 0) * 1.15)
+    ) {
+      this.ticksSinceRepath = 0;
+      this.stickyTarget = best?.pos ?? null;
+    }
+
+    if (isImmediateDeath(state, self, self.direction, blocked)) {
       return safeFallback(state, self, blocked, this.rng);
     }
-    return bestDir;
+
+    if (this.stickyTarget) {
+      const step = stepToward(state, self, this.stickyTarget, blocked);
+      if (step && !isImmediateDeath(state, self, step, blocked)) {
+        // Points first: chase unless the step is an obvious dead-end.
+        const chaseSpace = spaceAfterMove(state, self, step, blocked);
+        if (chaseSpace >= HARD_MIN_CHASE_SPACE) {
+          return step;
+        }
+      }
+    }
+
+    // Among safe dirs, pick the one that most reduces distance to best pellet.
+    if (best) {
+      let bestDir: Direction | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const dir of DIRS) {
+        if (dir === OPPOSITE[self.direction]) {
+          continue;
+        }
+        if (isImmediateDeath(state, self, dir, blocked)) {
+          continue;
+        }
+        const next = { x: head.x + DELTA[dir].x, y: head.y + DELTA[dir].y };
+        const dist = dijkstraDistance(
+          state.width,
+          state.height,
+          next,
+          best.pos,
+          blocked,
+        );
+        if (dist !== null && dist < bestDist) {
+          bestDist = dist;
+          bestDir = dir;
+        }
+      }
+      if (bestDir) {
+        return bestDir;
+      }
+    }
+
+    return safeFallback(state, self, blocked, this.rng);
   }
 }

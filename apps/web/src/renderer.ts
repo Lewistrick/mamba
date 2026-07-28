@@ -167,7 +167,7 @@ export class Renderer {
     if (overlay === "paused") {
       this.drawOverlay("paused", state?.score ?? 0);
     } else if (overlay === "gameover" || state?.status === "gameover") {
-      this.drawOverlay("gameover", state?.score ?? 0);
+      this.drawOverlay("gameover", state?.score ?? 0, state?.survivalScore ?? 0);
     }
   }
 
@@ -195,6 +195,9 @@ export class Renderer {
     const level = state?.level ?? 1;
     const versus = (state?.players.length ?? 1) > 1;
 
+    const survival = state?.survivalScore ?? 0;
+    const survRate = `+${level}/s`;
+
     let cursor = cssW - 10;
     if (versus && state) {
       cursor = this.drawHudStat(cursor, cy, `Net : ${state.netScore}`);
@@ -202,8 +205,12 @@ export class Renderer {
       cursor = this.drawHudStat(cursor, cy, `AI : ${state.players[1]?.score ?? 0}`);
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
+      cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `Surv : ${survival} ${survRate}`);
     } else {
       cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
+      cursor -= 8;
+      cursor = this.drawHudStat(cursor, cy, `Surv : ${survival} ${survRate}`);
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `Level : ${level}`);
     }
@@ -521,7 +528,11 @@ export class Renderer {
   /**
    * Draws a full-field status overlay (game over or pause).
    */
-  private drawOverlay(kind: "gameover" | "paused", score: number): void {
+  private drawOverlay(
+    kind: "gameover" | "paused",
+    score: number,
+    survivalScore = 0,
+  ): void {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
@@ -539,10 +550,11 @@ export class Renderer {
       ctx.fillStyle = COLORS.white;
       ctx.fillText("Press P to resume", cx, cy + 24);
     } else {
+      const pellets = score - survivalScore;
       ctx.fillText("GAME OVER", cx, cy - 20);
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      ctx.fillText(`Score: ${score}`, cx, cy + 16);
+      ctx.fillText(`Score: ${score} (pellets ${pellets} + surv ${survivalScore})`, cx, cy + 16);
       ctx.fillText("Press Play or Enter to try again", cx, cy + 40);
     }
     ctx.textAlign = "left";

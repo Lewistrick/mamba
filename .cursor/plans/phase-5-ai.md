@@ -13,7 +13,7 @@
 |----|----------|
 | easy | Sticky pellet target, mostly straight, rare turns, survival glance |
 | medium | Greedy nearest pellet + yellow when reachable; 2-tick reaction delay |
-| hard | Score moves by pellets, human proximity, flood-fill space, short lookahead |
+| hard | Greedy pellet chase (points first); only aborts into tiny dead-ends |
 
 AI lives in [`packages/engine/src/ai.ts`](../../packages/engine/src/ai.ts) (`AiBrain`), seeded from the game seed.
 
@@ -27,7 +27,7 @@ AI lives in [`packages/engine/src/ai.ts`](../../packages/engine/src/ai.ts) (`AiB
 ## Client
 
 - Menu: Solo / vs AI + Easy/Medium/Hard
-- Cyan AI snake; HUD shows You / AI / Net
+- Cyan AI snake; HUD shows You / AI / Net / Surv (+level/s)
 - Leaderboard mode filter beside scope/period
 - Pause (`P`) freezes AI ticks too
 

@@ -650,10 +650,12 @@ function onGameOver(final: GameState, run: Game): void {
     mode,
   };
 
+  const survival = final.survivalScore;
+  const pelletScore = final.score - survival;
   const summary =
     final.players.length > 1
-      ? `You ${final.players[0].score} · AI ${final.players[1].score} · Net ${score}`
-      : `Score ${score}`;
+      ? `You ${final.players[0].score} (pellets ${final.players[0].score - final.players[0].survivalScore} + surv ${final.players[0].survivalScore}) · AI ${final.players[1].score} · Net ${score}`
+      : `Score ${score} (pellets ${pelletScore} + surv ${survival})`;
 
   if (signedInEmail && profile?.usernameSet && score > 0) {
     showGameOverOverlay(pending, "account");
@@ -777,6 +779,7 @@ function frame(now: number): void {
           body: [],
           direction: "Right",
           score: 0,
+          survivalScore: 0,
           level: 1,
           pelletsEatenThisLife: 0,
           moltThreshold: 0,
@@ -792,6 +795,7 @@ function frame(now: number): void {
       greenPellets: [],
       yellowPellet: null,
       score: 0,
+      survivalScore: 0,
       level: 1,
       pelletsEatenThisLife: 0,
       moltThreshold: 0,

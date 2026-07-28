@@ -542,4 +542,40 @@ describe("Game", () => {
     expect(game.netScore()).toBe(50);
     expect(game.getState().netScore).toBe(50);
   });
+
+  it("awards survival points equal to level each second", () => {
+    const game = Game.withSize("medium", 7);
+    patchGame(game, {
+      snake: [
+        { x: 5, y: 10 },
+        { x: 4, y: 10 },
+        { x: 3, y: 10 },
+        { x: 2, y: 10 },
+        { x: 1, y: 10 },
+      ],
+      direction: "Right",
+      bluePellets: [],
+      greenPellets: [],
+      walls: [],
+      level: 4,
+      score: 0,
+      moltThreshold: 99,
+    });
+
+    let state = game.getState();
+    for (let i = 0; i < 10; i += 1) {
+      state = game.tick();
+    }
+    expect(state.tick).toBe(10);
+    expect(state.status).toBe("playing");
+    expect(state.survivalScore).toBe(4);
+    expect(state.score).toBe(4);
+
+    for (let i = 0; i < 10; i += 1) {
+      state = game.tick();
+    }
+    expect(state.status).toBe("playing");
+    expect(state.survivalScore).toBe(8);
+    expect(state.score).toBe(8);
+  });
 });
