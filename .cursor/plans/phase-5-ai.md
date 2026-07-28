@@ -4,7 +4,7 @@
 
 - Shared board: two snakes, shared pellets / walls / yellow
 - Run ends when **either** human or AI dies (head-on → both die)
-- Leaderboard score = **net** (`player − AI`); must be `> 0` to qualify
+- Leaderboard score = **net** (`player − AI`); negatives are kept; win bonus `100×level` if AI dies first
 - Modes: `solo` | `ai:easy` | `ai:medium` | `ai:hard`
 
 ## Difficulties
@@ -28,7 +28,7 @@ AI lives in [`packages/engine/src/ai.ts`](../../packages/engine/src/ai.ts) (`AiB
 
 - Menu: Solo / vs AI + Easy/Medium/Hard
 - Cyan AI snake; HUD: You → AI → Time → Net (plus level)
-- Leaderboard mode filter beside scope/period
+- Scores list follows menu mode/size; period filter only (all-time / weekly / daily)
 - Pause (`P`) freezes AI ticks too
 
 ## Deploy note

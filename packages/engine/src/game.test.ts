@@ -543,9 +543,115 @@ describe("Game", () => {
     expect(game.getState().netScore).toBe(50);
   });
 
-  it("awards survival points equal to level each second", () => {
-    const game = Game.withSize("medium", 7);
-    patchGame(game, {
+  it("awards win bonus when the AI dies and the player survives", () => {
+    const game = Game.versusAi("medium", 3);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        score: number;
+        level: number;
+        winBonus: number;
+        moltThreshold: number;
+        inputQueue: unknown[];
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].score = 10;
+    g.players[0].level = 3;
+    g.players[0].winBonus = 0;
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    // AI drives into the left border.
+    g.players[1].body = [
+      { x: 0, y: 8 },
+      { x: 1, y: 8 },
+      { x: 2, y: 8 },
+      { x: 3, y: 8 },
+      { x: 4, y: 8 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].score = 7;
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+
+    const state = game.tick();
+    expect(state.status).toBe("gameover");
+    expect(state.players[0].alive).toBe(true);
+    expect(state.players[1].alive).toBe(false);
+    expect(state.winBonus).toBe(300);
+    expect(state.players[0].winBonus).toBe(300);
+    expect(state.score).toBe(310);
+    expect(state.netScore).toBe(303);
+  });
+
+  it("does not award win bonus on a head-on collision", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        score: number;
+        level: number;
+        winBonus: number;
+        moltThreshold: number;
+        inputQueue: unknown[];
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].level = 2;
+    g.players[0].score = 0;
+    g.players[0].winBonus = 0;
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    g.players[1].body = [
+      { x: 7, y: 5 },
+      { x: 8, y: 5 },
+      { x: 9, y: 5 },
+      { x: 10, y: 5 },
+      { x: 11, y: 5 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+
+    const state = game.tick();
+    expect(state.status).toBe("gameover");
+    expect(state.players[0].alive).toBe(false);
+    expect(state.players[1].alive).toBe(false);
+    expect(state.winBonus).toBe(0);
+    expect(state.score).toBe(0);
+  });
+
+  it("awards survival points in versus only", () => {
+    const solo = Game.withSize("medium", 7);
+    patchGame(solo, {
       snake: [
         { x: 5, y: 10 },
         { x: 4, y: 10 },
@@ -561,21 +667,64 @@ describe("Game", () => {
       score: 0,
       moltThreshold: 99,
     });
-
-    let state = game.getState();
+    let soloState = solo.getState();
     for (let i = 0; i < 10; i += 1) {
-      state = game.tick();
+      soloState = solo.tick();
     }
-    expect(state.tick).toBe(10);
-    expect(state.status).toBe("playing");
-    expect(state.survivalScore).toBe(4);
-    expect(state.score).toBe(4);
+    expect(soloState.survivalScore).toBe(0);
+    expect(soloState.score).toBe(0);
 
+    const versus = Game.versusAi("medium", 11);
+    const g = versus as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        score: number;
+        level: number;
+        survivalScore: number;
+        moltThreshold: number;
+        inputQueue: unknown[];
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    for (const p of g.players) {
+      p.moltThreshold = 99;
+      p.score = 0;
+      p.survivalScore = 0;
+      p.level = 4;
+      p.inputQueue = [];
+    }
+    // Keep both snakes moving into open space on medium field.
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[1].body = [
+      { x: 30, y: 15 },
+      { x: 31, y: 15 },
+      { x: 32, y: 15 },
+      { x: 33, y: 15 },
+      { x: 34, y: 15 },
+    ];
+    g.players[1].direction = "Left";
+
+    let state = versus.getState();
     for (let i = 0; i < 10; i += 1) {
-      state = game.tick();
+      state = versus.tick();
     }
     expect(state.status).toBe("playing");
-    expect(state.survivalScore).toBe(8);
-    expect(state.score).toBe(8);
+    expect(state.players[0].survivalScore).toBe(4);
+    expect(state.players[0].score).toBe(4);
+    expect(state.players[1].survivalScore).toBe(4);
+    expect(state.players[1].score).toBe(4);
   });
 });

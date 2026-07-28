@@ -85,6 +85,45 @@ function pelletTargets(
 }
 
 /**
+ * Counts orthogonal neighbors that are in-bounds and not walls.
+ *
+ * @param state - Game state.
+ * @param pos - Cell to inspect.
+ * @returns Open side count (0–4).
+ */
+function openNonWallSides(state: GameState, pos: Point): number {
+  const walls = new Set(state.walls.map((w) => `${w.x},${w.y}`));
+  let open = 0;
+  for (const dir of DIRS) {
+    const n = { x: pos.x + DELTA[dir].x, y: pos.y + DELTA[dir].y };
+    if (n.x < 0 || n.y < 0 || n.x >= state.width || n.y >= state.height) {
+      continue;
+    }
+    if (!walls.has(`${n.x},${n.y}`)) {
+      open += 1;
+    }
+  }
+  return open;
+}
+
+/**
+ * True when a green pellet sits in a wall pocket (dead-end / fully enclosed).
+ *
+ * Greens with fewer than two open sides leave no room to escape after eating.
+ *
+ * @param state - Game state.
+ * @param pos - Candidate pellet cell.
+ * @returns Whether hard AI should ignore this green.
+ */
+function isEnclosedGreen(state: GameState, pos: Point): boolean {
+  const isGreen = state.greenPellets.some((p) => p.x === pos.x && p.y === pos.y);
+  if (!isGreen) {
+    return false;
+  }
+  return openNonWallSides(state, pos) < 2;
+}
+
+/**
  * First step of a shortest path toward a goal, or null if unreachable.
  *
  * @param state - Game state.
@@ -518,6 +557,9 @@ export class AiBrain {
     const targets = pelletTargets(state, true);
 
     const scoreTarget = (t: { pos: Point; value: number }): number | null => {
+      if (isEnclosedGreen(state, t.pos)) {
+        return null;
+      }
       const dist = dijkstraDistance(state.width, state.height, head, t.pos, blocked);
       if (dist === null || dist <= 0) {
         return null;

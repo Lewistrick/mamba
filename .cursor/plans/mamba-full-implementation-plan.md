@@ -89,15 +89,21 @@ flowchart LR
 ## Phase 5 — AI opponent (done)
 
 - Shared board; difficulties emit direction inputs via `AiBrain`
-- End when either dies; score = player − AI (net)
+- End when either dies; score = player − AI (net); time + win bonuses
 - Leaderboard `mode = ai:{easy|medium|hard}` (human net score)
 - See [phase-5-ai.md](phase-5-ai.md)
+
+## Phase 5.5 — Proton SMTP (auth mail)
+
+- Optional: send Auth email via Proton instead of Supabase built-in mailer
+- Requires a **custom domain address** on Proton (paid plan alone is not enough)
+- Dashboard-only setup; see [phase-proton-smtp.md](phase-proton-smtp.md)
 
 ## Phase 6 — Online 1v1
 
 - Hono WS server owns ticks; clients send inputs only
 - Matchmaking / room codes; head-on → both die
-- Optional: Proton custom SMTP + re-enable Confirm email (Auth)
+- Confirm email can stay on once Phase 5.5 SMTP is live
 
 ## Phase 7 — Spectating
 
@@ -122,4 +128,4 @@ flowchart LR
 
 ## Implementation order
 
-Phase 1 → 2 → 3 → 4 → **5 (AI, done)**; MP (6) after engine + auth; spectate (7) → tournaments (8).
+Phase 1 → 2 → 3 → 4 → **5 (AI, done)** → **5.5 (Proton SMTP, optional)** → MP (6) → spectate (7) → tournaments (8).

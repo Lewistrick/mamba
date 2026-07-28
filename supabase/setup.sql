@@ -16,7 +16,7 @@ create table if not exists public.scores (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   display_name text not null,
-  score integer not null check (score >= 0),
+  score integer not null,
   level integer not null check (level >= 1),
   size_id text not null check (size_id in ('small', 'medium', 'large')),
   mode text not null default 'solo',

@@ -104,11 +104,14 @@ describe("getBoard / submitScore", () => {
   });
 
   it("qualifies when board is not full or score beats last place", () => {
+    expect(qualifiesForBoard(-12, "small", "solo")).toBe(true);
+    expect(qualifiesForBoard(0, "small", "solo")).toBe(true);
     expect(qualifiesForBoard(1, "small", "solo")).toBe(true);
     for (let i = 0; i < 10; i += 1) {
       submitScore(entry({ score: 100 - i, createdAt: i, sizeId: "small" }));
     }
     expect(qualifiesForBoard(50, "small", "solo")).toBe(false);
     expect(qualifiesForBoard(100, "small", "solo")).toBe(true);
+    expect(qualifiesForBoard(-1, "small", "solo")).toBe(false);
   });
 });

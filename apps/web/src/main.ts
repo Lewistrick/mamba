@@ -23,6 +23,7 @@ import {
   type ScoreEntry,
 } from "./leaderboard.ts";
 import { Renderer } from "./renderer.ts";
+import { gameOverScoreLines } from "./scoreBreakdown.ts";
 import {
   loadSettings,
   playModeKey,
@@ -73,8 +74,6 @@ const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
 const soundToggleEl = document.querySelector<HTMLInputElement>("#sound-enabled");
 const statusNode = document.querySelector<HTMLElement>("#status");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
-const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
-const lbModeSelect = document.querySelector<HTMLSelectElement>("#lb-mode");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
 const aiDifficultyField = document.querySelector<HTMLElement>("#ai-difficulty-field");
@@ -109,8 +108,6 @@ if (
   !soundToggleEl ||
   !statusNode ||
   !lbPeriodSelect ||
-  !lbScopeSelect ||
-  !lbModeSelect ||
   !lbList ||
   !lbEmpty ||
   !aiDifficultyField ||
@@ -142,8 +139,6 @@ const playBtn = playBtnEl;
 const soundToggle = soundToggleEl;
 const statusEl = statusNode;
 const periodSelect = lbPeriodSelect;
-const scopeSelect = lbScopeSelect;
-const modeSelect = lbModeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
 const aiDifficultyFieldEl = aiDifficultyField;
@@ -215,8 +210,6 @@ function syncMenuFromSettings(): void {
   soundToggle.checked = settings.soundEnabled;
   sounds.setMuted(!settings.soundEnabled);
   guestNameEl.value = settings.playerName;
-  scopeSelect.value = settings.leaderboardScope;
-  modeSelect.value = settings.leaderboardMode;
 }
 
 /**
@@ -281,12 +274,10 @@ function selectedPeriod(): LeaderboardPeriod {
 }
 
 /**
- * Reads local/global scope from the select control.
- *
- * @returns Scope id.
+ * Whether to show the global board (signed-in + Supabase) or local.
  */
-function selectedScope(): "local" | "global" {
-  return scopeSelect.value === "global" ? "global" : "local";
+function useGlobalBoard(): boolean {
+  return Boolean(supabaseConfigured && signedInEmail);
 }
 
 /**
@@ -297,8 +288,6 @@ function persistFromMenu(): void {
   settings.playMode = selectedPlayMode();
   settings.aiDifficulty = selectedAiDifficulty();
   settings.soundEnabled = soundToggle.checked;
-  settings.leaderboardScope = selectedScope();
-  settings.leaderboardMode = modeSelect.value || playModeKey(settings);
   aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
   sounds.setMuted(!settings.soundEnabled);
   saveSettings(settings);
@@ -344,10 +333,7 @@ function renderBoard(board: ScoreEntry[]): void {
   listEl.replaceChildren();
   if (board.length === 0) {
     emptyEl.hidden = false;
-    emptyEl.textContent =
-      selectedScope() === "global" && !supabaseConfigured
-        ? "Configure Supabase for global scores"
-        : "No scores yet";
+    emptyEl.textContent = "No scores yet";
     return;
   }
   emptyEl.hidden = true;
@@ -361,21 +347,15 @@ function renderBoard(board: ScoreEntry[]): void {
 }
 
 /**
- * Refreshes the visible leaderboard (local or global).
+ * Refreshes the visible leaderboard for the menu size + mode.
  */
 async function refreshLeaderboard(): Promise<void> {
   const sizeId = selectedSizeId();
   const period = selectedPeriod();
-  const scope = selectedScope();
-  const mode = (modeSelect.value || "solo") as GameMode;
+  const mode = currentMode();
 
-  if (scope === "local") {
+  if (!useGlobalBoard()) {
     renderBoard(getBoard(sizeId, mode, period));
-    return;
-  }
-
-  if (!supabaseConfigured) {
-    renderBoard([]);
     return;
   }
 
@@ -628,47 +608,11 @@ function startGame(): void {
 /**
  * Formats the game-over score breakdown for the overlay.
  *
- * Versus (separate lines): own score, − AI, time bonus, +, net.
- *
  * @param final - Final engine state.
  * @returns Multi-line summary.
  */
 function formatGameOverScore(final: GameState): string {
-  if (final.players.length > 1) {
-    const you = final.players[0].score;
-    const ai = final.players[1].score;
-    const time = final.players[0].survivalScore;
-    const net = final.netScore;
-    const width = Math.max(
-      String(you).length,
-      String(ai).length,
-      String(time).length,
-      String(net).length,
-    );
-    const num = (n: number): string => String(n).padStart(width, " ");
-    return [
-      `You    ${num(you)}`,
-      `- AI   ${num(ai)}`,
-      `Time   ${num(time)}`,
-      `+`,
-      `Net    ${num(net)}`,
-    ].join("\n");
-  }
-
-  const time = final.survivalScore;
-  const pellets = final.score - time;
-  const width = Math.max(
-    String(pellets).length,
-    String(time).length,
-    String(final.score).length,
-  );
-  const num = (n: number): string => String(n).padStart(width, " ");
-  return [
-    `Pellets ${num(pellets)}`,
-    `Time    ${num(time)}`,
-    `+`,
-    `Score   ${num(final.score)}`,
-  ].join("\n");
+  return gameOverScoreLines(final).join("\n");
 }
 
 /**
@@ -700,7 +644,7 @@ function onGameOver(final: GameState, run: Game): void {
   const shortStatus =
     final.players.length > 1 ? `Net ${score}` : `Score ${score}`;
 
-  if (signedInEmail && profile?.usernameSet && score > 0) {
+  if (signedInEmail && profile?.usernameSet) {
     showGameOverOverlay(pending, "account");
     goScoreEl.textContent = summary;
     void autoSaveAccountScore(pending);
@@ -823,6 +767,7 @@ function frame(now: number): void {
           direction: "Right",
           score: 0,
           survivalScore: 0,
+          winBonus: 0,
           level: 1,
           pelletsEatenThisLife: 0,
           moltThreshold: 0,
@@ -839,6 +784,7 @@ function frame(now: number): void {
       yellowPellet: null,
       score: 0,
       survivalScore: 0,
+      winBonus: 0,
       level: 1,
       pelletsEatenThisLife: 0,
       moltThreshold: 0,
@@ -883,24 +829,9 @@ periodSelect.addEventListener("change", () => {
   void refreshLeaderboard();
 });
 
-scopeSelect.addEventListener("change", () => {
-  persistFromMenu();
-  void refreshLeaderboard();
-});
-
-modeSelect.addEventListener("change", () => {
-  persistFromMenu();
-  void refreshLeaderboard();
-});
-
 for (const input of playModeInputs) {
   input.addEventListener("change", () => {
     persistFromMenu();
-    if (settings.playMode === "ai") {
-      settings.leaderboardMode = `ai:${settings.aiDifficulty}`;
-      modeSelect.value = settings.leaderboardMode;
-      saveSettings(settings);
-    }
     void refreshLeaderboard();
   });
 }
@@ -908,11 +839,6 @@ for (const input of playModeInputs) {
 for (const input of aiDifficultyInputs) {
   input.addEventListener("change", () => {
     persistFromMenu();
-    if (settings.playMode === "ai") {
-      settings.leaderboardMode = `ai:${settings.aiDifficulty}`;
-      modeSelect.value = settings.leaderboardMode;
-      saveSettings(settings);
-    }
     void refreshLeaderboard();
   });
 }

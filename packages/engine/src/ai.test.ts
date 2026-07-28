@@ -43,4 +43,60 @@ describe("AiBrain", () => {
       game.tick();
     }
   });
+
+  it("hard AI does not chase greens enclosed by walls", () => {
+    const brain = new AiBrain("hard", 42);
+    const game = Game.versusAi("medium", 42);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        inputQueue: unknown[];
+        moltThreshold: number;
+      }>;
+      walls: Set<string>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      yellowPellet: null;
+    };
+
+    // Dead-end green at (10,10): walls on N/S/W, open only to the east.
+    g.walls = new Set([
+      "10,9",
+      "10,11",
+      "9,10",
+      "9,9",
+      "9,11",
+      "11,9",
+      "11,11",
+    ]);
+    g.greenPellets = new Set(["10,10"]);
+    g.bluePellets = new Set(["25,5"]);
+    g.yellowPellet = null;
+    g.players[0].body = [
+      { x: 2, y: 2 },
+      { x: 1, y: 2 },
+      { x: 0, y: 2 },
+      { x: 0, y: 3 },
+      { x: 0, y: 4 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    // AI approaches from the east toward the green niche.
+    g.players[1].body = [
+      { x: 14, y: 10 },
+      { x: 15, y: 10 },
+      { x: 16, y: 10 },
+      { x: 17, y: 10 },
+      { x: 18, y: 10 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+
+    const dir = brain.decide(game.getState());
+    // Must not step left into the enclosed green; prefer other safe play.
+    expect(dir).not.toBe("Left");
+  });
 });

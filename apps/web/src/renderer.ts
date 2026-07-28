@@ -3,6 +3,7 @@
  */
 
 import type { Direction, GameState, Point } from "@mamba/engine";
+import { gameOverScoreLines } from "./scoreBreakdown.ts";
 
 const COLORS = {
   background: "#000000",
@@ -207,8 +208,6 @@ export class Renderer {
       cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
     } else {
       cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
-      cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
     }
     cursor -= 10;
 
@@ -548,7 +547,7 @@ export class Renderer {
       ctx.fillText("GAME OVER", cx, cy - 48);
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      const lines = this.gameOverScoreLines(state);
+      const lines = state ? gameOverScoreLines(state) : ["Score  0"];
       let y = cy - 8;
       for (const line of lines) {
         ctx.fillText(line, cx, y);
@@ -557,52 +556,6 @@ export class Renderer {
       ctx.fillText("Press Play or Enter to try again", cx, y + 12);
     }
     ctx.textAlign = "left";
-  }
-
-  /**
-   * Builds game-over score lines matching the HTML overlay layout.
-   *
-   * @param state - Final state.
-   * @returns Display lines.
-   */
-  private gameOverScoreLines(state: GameState | null): string[] {
-    if (!state) {
-      return ["Score 0"];
-    }
-    if (state.players.length > 1) {
-      const you = state.players[0].score;
-      const ai = state.players[1].score;
-      const time = state.players[0].survivalScore;
-      const net = state.netScore;
-      const width = Math.max(
-        String(you).length,
-        String(ai).length,
-        String(time).length,
-        String(net).length,
-      );
-      const num = (n: number): string => String(n).padStart(width, " ");
-      return [
-        `You    ${num(you)}`,
-        `- AI   ${num(ai)}`,
-        `Time   ${num(time)}`,
-        `+`,
-        `Net    ${num(net)}`,
-      ];
-    }
-    const time = state.survivalScore;
-    const pellets = state.score - time;
-    const width = Math.max(
-      String(pellets).length,
-      String(time).length,
-      String(state.score).length,
-    );
-    const num = (n: number): string => String(n).padStart(width, " ");
-    return [
-      `Pellets ${num(pellets)}`,
-      `Time    ${num(time)}`,
-      `+`,
-      `Score   ${num(state.score)}`,
-    ];
   }
 
   /**

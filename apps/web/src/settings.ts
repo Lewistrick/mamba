@@ -13,24 +13,18 @@ export interface Settings {
   soundEnabled: boolean;
   /** Last used high-score name. */
   playerName: string;
-  /** Local vs global leaderboard view. */
-  leaderboardScope: "local" | "global";
   /** Solo or versus AI. */
   playMode: "solo" | "ai";
   /** AI difficulty when playMode is ai. */
   aiDifficulty: AiDifficulty;
-  /** Leaderboard mode filter (`solo` or `ai:easy` …). */
-  leaderboardMode: string;
 }
 
 const DEFAULTS: Settings = {
   sizeId: "medium",
   soundEnabled: true,
   playerName: "AAA",
-  leaderboardScope: "local",
   playMode: "solo",
   aiDifficulty: "medium",
-  leaderboardMode: "solo",
 };
 
 /**
@@ -65,12 +59,6 @@ export function loadSettings(): Settings {
       ? (parsed.aiDifficulty as AiDifficulty)
       : DEFAULTS.aiDifficulty;
     const playMode = parsed.playMode === "ai" ? "ai" : "solo";
-    const leaderboardMode =
-      typeof parsed.leaderboardMode === "string" && parsed.leaderboardMode.length > 0
-        ? parsed.leaderboardMode
-        : playMode === "ai"
-          ? `ai:${aiDifficulty}`
-          : "solo";
     return {
       sizeId,
       soundEnabled:
@@ -81,11 +69,8 @@ export function loadSettings(): Settings {
         typeof parsed.playerName === "string" && parsed.playerName.trim().length > 0
           ? parsed.playerName.trim().slice(0, 12)
           : DEFAULTS.playerName,
-      leaderboardScope:
-        parsed.leaderboardScope === "global" ? "global" : "local",
       playMode,
       aiDifficulty,
-      leaderboardMode,
     };
   } catch {
     return { ...DEFAULTS };

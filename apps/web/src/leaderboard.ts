@@ -135,7 +135,7 @@ export function qualifiesForBoard(
 ): boolean {
   const board = getBoard(sizeId, mode, "all", Date.now(), all);
   if (board.length < MAX_ENTRIES) {
-    return score > 0;
+    return true;
   }
   return score > board[board.length - 1].score;
 }

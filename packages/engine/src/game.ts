@@ -45,6 +45,7 @@ interface PlayerInternal {
   inputQueue: Direction[];
   score: number;
   survivalScore: number;
+  winBonus: number;
   level: number;
   pelletsEatenThisLife: number;
   moltThreshold: number;
@@ -350,6 +351,7 @@ export class Game {
         : null,
       score: p0.score,
       survivalScore: p0.survivalScore,
+      winBonus: p0.winBonus,
       level: p0.level,
       pelletsEatenThisLife: p0.pelletsEatenThisLife,
       moltThreshold: p0.moltThreshold,
@@ -408,6 +410,7 @@ export class Game {
       inputQueue: [],
       score: 0,
       survivalScore: 0,
+      winBonus: 0,
       level: 1,
       pelletsEatenThisLife: 0,
       moltThreshold: randomInt(this.rng, 12, 22),
@@ -428,6 +431,7 @@ export class Game {
       direction: player.direction,
       score: player.score,
       survivalScore: player.survivalScore,
+      winBonus: player.winBonus,
       level: player.level,
       pelletsEatenThisLife: player.pelletsEatenThisLife,
       moltThreshold: player.moltThreshold,
@@ -550,8 +554,12 @@ export class Game {
 
   /**
    * Each real-time second (10 ticks), living snakes gain `level` points.
+   * Versus / AI only — solo does not award a time bonus.
    */
   private applySurvivalBonus(): void {
+    if (this.playerCount < 2) {
+      return;
+    }
     if (this.tickCount === 0 || this.tickCount % TICKS_PER_SECOND !== 0) {
       return;
     }
@@ -566,6 +574,7 @@ export class Game {
 
   /**
    * Marks a player dead and ends the run (either death ends versus/solo).
+   * Beating the AI awards `100 ×` the human's level.
    *
    * @param playerIndex - Who died.
    */
@@ -576,6 +585,18 @@ export class Game {
     }
     player.alive = false;
     this.events.push({ type: "die", player: playerIndex });
+
+    if (
+      this.playerCount === 2 &&
+      playerIndex === 1 &&
+      this.players[0].alive
+    ) {
+      const human = this.players[0];
+      const bonus = 100 * human.level;
+      human.score += bonus;
+      human.winBonus += bonus;
+    }
+
     this.status = "gameover";
   }
 

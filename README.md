@@ -9,7 +9,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - Deterministic headless engine with **replay verification** (solo + AI)
 - Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P)
 - **Solo** or **vs AI** (easy / medium / hard) on a shared board; scoreboard uses **net** (you − AI)
-- **Local + global leaderboards** (size × mode × period); account auth via email/password
+- **Local + global leaderboards** filtered by board size, play mode (menu), and period
 - Preferences in `localStorage`; guest play always works offline
 
 See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md) and [`.cursor/plans/phase-5-ai.md`](.cursor/plans/phase-5-ai.md).
@@ -22,7 +22,8 @@ See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full
 | Start | Snake length 5 |
 | Move | One cell per tick; head advances, tail removed unless you just ate |
 | Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn **one** replacement |
-| Survival | Every second while alive, score `+level` (HUD: Time bonus) |
+| Survival | vs AI only: every second while alive, score `+level` (HUD: Time) |
+| Win bonus | vs AI only: when the AI dies and you survive, score `+100 × level` |
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
 | Yellow pellet | Spawns on molt (lime); after 5 ticks TTL = Dijkstra + 5 (walls + body blocked), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
@@ -58,7 +59,7 @@ Optional. Without config, everything works offline.
 
 Auth is **email + password** (magic link is optional). After sign-in, choose a **username once** before Play; that name is locked for global scores. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score`.
 
-**Optional later:** custom SMTP (e.g. Proton Mail SMTP with a custom domain) under **Authentication → SMTP**, raise rate limits, then re-enable Confirm email if you want verified addresses.
+**Optional later:** custom SMTP via Proton — see [`.cursor/plans/phase-proton-smtp.md`](.cursor/plans/phase-proton-smtp.md) (needs a custom domain address, not just a paid `@proton.me` account). Then re-enable Confirm email under **Authentication → Providers → Email** if you want verified addresses.
 
 ## Monorepo layout
 

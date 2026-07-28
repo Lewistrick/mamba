@@ -197,15 +197,14 @@ body {
   gap: 0.4rem;
 }
 
-#lb-period,
-#lb-scope {
+#lb-period {
   font: inherit;
   font-size: 0.75rem;
   color: var(--text);
   background: #070a12;
   border: 1px solid var(--border);
   padding: 0.2rem 0.3rem;
-  flex: 1;
+  width: 100%;
 }
 
 .auth-panel {
