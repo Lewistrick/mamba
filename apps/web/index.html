@@ -93,25 +93,6 @@
           <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
         </section>
 
-        <section class="leaderboard" aria-label="Leaderboard">
-          <div class="lb-header">
-            <h2>Scores</h2>
-          </div>
-          <div class="lb-filters">
-            <select id="lb-scope" aria-label="Scope">
-              <option value="local">Local</option>
-              <option value="global">Global</option>
-            </select>
-            <select id="lb-period" aria-label="Period">
-              <option value="all">All-time</option>
-              <option value="weekly">Weekly</option>
-              <option value="daily">Daily</option>
-            </select>
-          </div>
-          <ol id="lb-list" class="lb-list"></ol>
-          <p id="lb-empty" class="lb-empty">No scores yet</p>
-        </section>
-
         <p id="status" class="status" role="status"></p>
         <p class="hint">Arrows to steer · S sound · P pause</p>
       </aside>
@@ -140,6 +121,25 @@
           </div>
         </div>
       </div>
+
+      <aside id="scores" class="leaderboard" aria-label="Leaderboard">
+        <div class="lb-header">
+          <h2>Scores</h2>
+        </div>
+        <div class="lb-filters">
+          <select id="lb-scope" aria-label="Scope">
+            <option value="local">Local</option>
+            <option value="global">Global</option>
+          </select>
+          <select id="lb-period" aria-label="Period">
+            <option value="all">All-time</option>
+            <option value="weekly">Weekly</option>
+            <option value="daily">Daily</option>
+          </select>
+        </div>
+        <ol id="lb-list" class="lb-list"></ol>
+        <p id="lb-empty" class="lb-empty">No scores yet</p>
+      </aside>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

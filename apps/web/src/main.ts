@@ -12,7 +12,7 @@ import {
   type GameState,
 } from "@mamba/engine";
 import { SoundBoard } from "./audio.ts";
-import { fetchGlobalBoard, submitGlobalScore } from "./globalLeaderboard.ts";
+import { fetchGlobalBoard, fetchGlobalStanding, submitGlobalScore } from "./globalLeaderboard.ts";
 import {
   getBoard,
   qualifiesForBoard,
@@ -558,7 +558,7 @@ async function saveGuestScore(): Promise<boolean> {
  */
 async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
   const name = sanitizeName(profile?.displayName ?? "AAA");
-  const { rank } = submitScore({
+  submitScore({
     name,
     score: pending.score,
     level: pending.level,
@@ -579,11 +579,50 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
     displayName: name,
   });
 
-  let message = rank !== null ? `Saved — local #${rank}` : "Saved locally";
-  message = error ? `${message} · global failed: ${error}` : `${message} · global OK`;
-  setGoSaveStatus(message, error ? "error" : "ok");
-  setStatus(message);
+  if (error) {
+    setGoSaveStatus(`Global save failed: ${error}`, "error");
+    setStatus(`Global save failed: ${error}`);
+    await refreshLeaderboard();
+    return;
+  }
+
+  const [daily, allTime] = await Promise.all([
+    fetchGlobalStanding(pending.sizeId, pending.mode, pending.score, "daily"),
+    fetchGlobalStanding(pending.sizeId, pending.mode, pending.score, "all"),
+  ]);
+
+  const lines: string[] = [];
+  if (daily !== null) {
+    lines.push(
+      `Daily global #${daily.rank} · ${formatTopOrBottom(daily.rank, daily.total)}`,
+    );
+  }
+  if (allTime !== null) {
+    lines.push(
+      `All-time global #${allTime.rank} · ${formatTopOrBottom(allTime.rank, allTime.total)}`,
+    );
+  }
+  const message = lines.length > 0 ? lines.join("\n") : "Saved to global board";
+  setGoSaveStatus(message, "ok");
+  setStatus(lines[0] ?? message);
   await refreshLeaderboard();
+}
+
+/**
+ * Labels a standing as “top x%” or “bottom x%”, whichever end is closer.
+ *
+ * @param rank - 1-based rank (1 = best).
+ * @param total - Field size (≥ 1).
+ * @returns e.g. `top 4%` or `bottom 12%`.
+ */
+function formatTopOrBottom(rank: number, total: number): string {
+  const n = Math.max(1, total);
+  const topPct = Math.max(1, Math.min(100, Math.round((100 * rank) / n)));
+  const bottomPct = Math.max(
+    1,
+    Math.min(100, Math.round((100 * (n - rank + 1)) / n)),
+  );
+  return topPct <= bottomPct ? `top ${topPct}%` : `bottom ${bottomPct}%`;
 }
 
 /**

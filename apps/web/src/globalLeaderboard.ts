@@ -57,6 +57,60 @@ export async function fetchGlobalBoard(
   }));
 }
 
+/** Global standing for a submitted score in a time window. */
+export interface GlobalStanding {
+  /** 1-based rank (higher score = better). */
+  rank: number;
+  /** Total verified scores in the window for this size/mode. */
+  total: number;
+}
+
+/**
+ * Computes global rank for a score in a period (daily or all-time).
+ *
+ * @param sizeId - Board size.
+ * @param mode - Game mode.
+ * @param score - Submitted net/solo score.
+ * @param period - `daily` or `all`.
+ * @returns Standing, or null if Supabase is unavailable / query failed.
+ */
+export async function fetchGlobalStanding(
+  sizeId: FieldSizeId,
+  mode: GameMode,
+  score: number,
+  period: "daily" | "all",
+): Promise<GlobalStanding | null> {
+  if (!supabase) {
+    return null;
+  }
+
+  const startMs = periodStart(period);
+  const base = () => {
+    let query = supabase!
+      .from("scores")
+      .select("id", { count: "exact", head: true })
+      .eq("size_id", sizeId)
+      .eq("mode", mode)
+      .eq("verified", true);
+    if (period !== "all") {
+      query = query.gte("created_at", new Date(startMs).toISOString());
+    }
+    return query;
+  };
+
+  const [{ count: totalRaw, error: totalError }, { count: betterRaw, error: betterError }] =
+    await Promise.all([base(), base().gt("score", score)]);
+
+  if (totalError || betterError) {
+    console.error("fetchGlobalStanding", totalError ?? betterError);
+    return null;
+  }
+
+  const total = Math.max(1, totalRaw ?? 0);
+  const better = betterRaw ?? 0;
+  return { rank: better + 1, total };
+}
+
 /** Body posted to the verify-score Edge Function. */
 export interface GlobalSubmitBody {
   seed: number;

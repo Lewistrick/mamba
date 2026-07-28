@@ -169,11 +169,18 @@ body {
 }
 
 .leaderboard {
+  flex: 0 0 260px;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding-top: 0.2rem;
-  border-top: 1px solid var(--border);
+  gap: 0.55rem;
+  padding: 1.1rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
 }
 
 .lb-header {
@@ -329,9 +336,11 @@ body {
 
 .go-save-status {
   margin: 0;
-  max-width: min(280px, 90%);
+  max-width: min(320px, 90%);
   font-size: 0.85rem;
   color: var(--accent-blue);
+  white-space: pre-line;
+  line-height: 1.4;
 }
 
 .go-save-status[data-kind="error"] {
@@ -442,7 +451,8 @@ body {
     align-items: stretch;
   }
 
-  #menu {
+  #menu,
+  #scores {
     position: static;
     flex: none;
     width: 100%;

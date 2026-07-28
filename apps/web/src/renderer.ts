@@ -167,7 +167,7 @@ export class Renderer {
 
     if (overlay === "paused") {
       this.drawOverlay("paused", state);
-    } else if (overlay === "gameover" || state?.status === "gameover") {
+    } else if (overlay === "gameover") {
       this.drawOverlay("gameover", state);
     }
   }
