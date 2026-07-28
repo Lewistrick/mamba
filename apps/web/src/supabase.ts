@@ -5,8 +5,35 @@
 import type { FieldSizeId } from "@mamba/engine";
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+/**
+ * True when the URL looks like a real Supabase project (not a placeholder).
+ *
+ * @param value - Candidate URL.
+ * @returns Whether the URL is usable.
+ */
+function isConfiguredSupabaseUrl(value: string | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+  if (/YOUR_PROJECT|example\.supabase|placeholder/i.test(value)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
+}
+
+const url = isConfiguredSupabaseUrl(rawUrl) ? rawUrl : undefined;
+const anonKey =
+  rawAnonKey && !/YOUR_ANON_KEY|CHANGEME|placeholder/i.test(rawAnonKey)
+    ? rawAnonKey
+    : undefined;
 
 /** True when Vite env has Supabase credentials. */
 export const supabaseConfigured = Boolean(url && anonKey);

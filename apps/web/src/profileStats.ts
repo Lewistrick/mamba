@@ -17,6 +17,48 @@ export interface StatRow {
   scores: MyScoreRow[];
 }
 
+/** Column keys for the stats table sort. */
+export type StatSortKey = "size" | "mode" | "plays";
+
+/** Active sort for the stats table. */
+export interface StatSort {
+  key: StatSortKey;
+  dir: "asc" | "desc";
+}
+
+/**
+ * Human-readable board size label.
+ *
+ * @param sizeId - Board size.
+ * @returns Display label.
+ */
+export function formatSizeLabel(sizeId: FieldSizeId): string {
+  if (sizeId === "small") {
+    return "Small";
+  }
+  if (sizeId === "large") {
+    return "Large";
+  }
+  return "Medium";
+}
+
+/**
+ * Human-readable mode label.
+ *
+ * @param mode - Game mode key.
+ * @returns Display label.
+ */
+export function formatModeLabel(mode: string): string {
+  if (mode === "solo") {
+    return "Solo";
+  }
+  if (mode.startsWith("ai:")) {
+    const diff = mode.slice(3);
+    return `AI ${diff.charAt(0).toUpperCase()}${diff.slice(1)}`;
+  }
+  return mode;
+}
+
 /**
  * Human-readable size + mode label.
  *
@@ -25,16 +67,58 @@ export interface StatRow {
  * @returns Display label.
  */
 export function formatStatLabel(sizeId: FieldSizeId, mode: string): string {
-  const size =
-    sizeId === "small" ? "Small" : sizeId === "large" ? "Large" : "Medium";
-  let modeLabel = mode;
-  if (mode === "solo") {
-    modeLabel = "Solo";
-  } else if (mode.startsWith("ai:")) {
-    const diff = mode.slice(3);
-    modeLabel = `AI ${diff.charAt(0).toUpperCase()}${diff.slice(1)}`;
-  }
-  return `${size} · ${modeLabel}`;
+  return `${formatSizeLabel(sizeId)} · ${formatModeLabel(mode)}`;
+}
+
+/**
+ * Stable index of a size for ordering.
+ *
+ * @param sizeId - Board size.
+ * @returns Sort rank.
+ */
+function sizeRank(sizeId: FieldSizeId): number {
+  return SIZES.indexOf(sizeId);
+}
+
+/**
+ * Stable index of a mode for ordering.
+ *
+ * @param mode - Game mode key.
+ * @returns Sort rank.
+ */
+function modeRank(mode: string): number {
+  const idx = (MODES as readonly string[]).indexOf(mode);
+  return idx >= 0 ? idx : MODES.length;
+}
+
+/**
+ * Returns a sorted copy of stats rows.
+ *
+ * @param rows - Stats rows.
+ * @param sort - Active sort key and direction.
+ * @returns Sorted rows.
+ */
+export function sortStatRows(rows: StatRow[], sort: StatSort): StatRow[] {
+  const mul = sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let primary = 0;
+    if (sort.key === "size") {
+      primary = sizeRank(a.sizeId) - sizeRank(b.sizeId);
+    } else if (sort.key === "mode") {
+      primary = modeRank(a.mode) - modeRank(b.mode);
+    } else {
+      primary = a.plays - b.plays;
+    }
+    if (primary !== 0) {
+      return primary * mul;
+    }
+    // Tie-breakers keep the table stable and readable.
+    const bySize = sizeRank(a.sizeId) - sizeRank(b.sizeId);
+    if (bySize !== 0) {
+      return bySize;
+    }
+    return modeRank(a.mode) - modeRank(b.mode);
+  });
 }
 
 /**

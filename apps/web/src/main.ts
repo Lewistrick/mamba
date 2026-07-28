@@ -25,7 +25,12 @@ import {
 import {
   buildStatRows,
   drawScoreHistoryChart,
+  formatModeLabel,
+  formatSizeLabel,
+  sortStatRows,
   type StatRow,
+  type StatSort,
+  type StatSortKey,
 } from "./profileStats.ts";
 import { Renderer } from "./renderer.ts";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
@@ -238,6 +243,7 @@ let signedInEmail: string | null = null;
 let profile: Profile | null = null;
 let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
+let profileStatSort: StatSort = { key: "size", dir: "asc" };
 
 /**
  * True when keyboard focus is in a text field.
@@ -608,25 +614,7 @@ async function refreshProfileStats(): Promise<void> {
 
   profileStatsEmptyEl.hidden = true;
   profileStatsTableEl.hidden = false;
-  for (const row of profileStatRows) {
-    const tr = document.createElement("tr");
-    const key = `${row.sizeId}|${row.mode}`;
-    tr.dataset.key = key;
-    if (key === selectedStatKey) {
-      tr.dataset.active = "true";
-    }
-    tr.innerHTML = `<td></td><td></td>`;
-    tr.children[0].textContent = row.label;
-    tr.children[1].textContent = String(row.plays);
-    tr.addEventListener("click", () => {
-      selectedStatKey = key;
-      for (const el of profileStatsBodyEl.querySelectorAll("tr")) {
-        el.dataset.active = el === tr ? "true" : "false";
-      }
-      showProfileChart(row);
-    });
-    profileStatsBodyEl.append(tr);
-  }
+  renderProfileStatsTable();
 
   if (selectedStatKey) {
     const selected = profileStatRows.find(
@@ -636,6 +624,66 @@ async function refreshProfileStats(): Promise<void> {
       showProfileChart(selected);
     }
   }
+}
+
+/**
+ * Updates sort-header indicators to match the active sort.
+ */
+function syncProfileSortHeaders(): void {
+  for (const btn of profileStatsTableEl.querySelectorAll<HTMLButtonElement>(".stats-sort")) {
+    const key = btn.dataset.sort as StatSortKey | undefined;
+    if (key === profileStatSort.key) {
+      btn.dataset.dir = profileStatSort.dir;
+    } else {
+      delete btn.dataset.dir;
+    }
+  }
+}
+
+/**
+ * Renders the stats table body using the current sort.
+ */
+function renderProfileStatsTable(): void {
+  syncProfileSortHeaders();
+  profileStatsBodyEl.replaceChildren();
+  const rows = sortStatRows(profileStatRows, profileStatSort);
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const key = `${row.sizeId}|${row.mode}`;
+    tr.dataset.key = key;
+    if (key === selectedStatKey) {
+      tr.dataset.active = "true";
+    }
+    tr.innerHTML = `<td></td><td></td><td></td>`;
+    tr.children[0].textContent = formatSizeLabel(row.sizeId);
+    tr.children[1].textContent = formatModeLabel(row.mode);
+    tr.children[2].textContent = String(row.plays);
+    tr.addEventListener("click", () => {
+      selectedStatKey = key;
+      for (const el of profileStatsBodyEl.querySelectorAll("tr")) {
+        el.dataset.active = el === tr ? "true" : "false";
+      }
+      showProfileChart(row);
+    });
+    profileStatsBodyEl.append(tr);
+  }
+}
+
+/**
+ * Toggles or switches the stats table sort.
+ *
+ * @param key - Column to sort by.
+ */
+function setProfileStatSort(key: StatSortKey): void {
+  if (profileStatSort.key === key) {
+    profileStatSort = {
+      key,
+      dir: profileStatSort.dir === "asc" ? "desc" : "asc",
+    };
+  } else {
+    profileStatSort = { key, dir: key === "plays" ? "desc" : "asc" };
+  }
+  renderProfileStatsTable();
 }
 
 /**
@@ -1200,6 +1248,16 @@ profileBtnEl.addEventListener("click", () => {
 profileBackEl.addEventListener("click", () => {
   showGameShell();
 });
+
+for (const btn of profileStatsTableEl.querySelectorAll<HTMLButtonElement>(".stats-sort")) {
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const key = btn.dataset.sort as StatSortKey | undefined;
+    if (key === "size" || key === "mode" || key === "plays") {
+      setProfileStatSort(key);
+    }
+  });
+}
 
 profileUsernameFormEl.addEventListener("submit", (event) => {
   event.preventDefault();

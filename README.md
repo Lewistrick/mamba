@@ -47,6 +47,25 @@ Open the URL Vite prints (default `http://localhost:5173`).
 
 Pick **Solo** or **vs AI** (and a difficulty) in the menu before Play.
 
+## Docker (static web)
+
+Serves the Vite build with nginx. Auth, Postgres, and `verify-score` stay on **cloud Supabase** (keys are baked in at image build time).
+
+```bash
+cp .env.docker.example .env
+# REQUIRED for login: replace placeholders with real values from
+# Supabase → Project Settings → API (same as apps/web/.env.local).
+# Leaving YOUR_PROJECT / YOUR_ANON_KEY will break sign-in with "Failed to fetch".
+
+docker compose up --build
+```
+
+Open the mapped URL (default in compose may be [http://localhost:34364](http://localhost:34364) if you changed the host port).
+
+For magic-link redirects when testing the container, add that origin (e.g. `http://localhost:34364`) to Supabase **Authentication → URL Configuration** (Site URL / Redirect URLs).
+
+Rebuild after changing `.env` Supabase values (`docker compose up --build`) — editing `.env` alone does not update an already-built image.
+
 ## Supabase (global scores)
 
 Optional. Without config, everything works offline.
@@ -67,6 +86,9 @@ Auth is **email + password** (magic link is optional). After sign-in, choose a *
 ```
 apps/web/           Vite + Canvas client
 packages/engine/    Pure TypeScript game rules (no DOM)
+deploy/             nginx config for the Docker image
+Dockerfile          Multi-stage Node build → nginx
+docker-compose.yml  Local/static container on port 8080
 ```
 
 The engine is seeded and deterministic: the same seed and input sequence always produce the same score and state (needed later for anti-cheat and multiplayer).
@@ -78,6 +100,7 @@ The engine is seeded and deterministic: the same seed and input sequence always 
 | `npm run dev` | Start the web client |
 | `npm test` | Run engine + web unit tests |
 | `npm run build` | Typecheck engine + build the web client |
+| `docker compose up --build` | Build and serve the static client on port 8080 |
 
 ## Credits
 

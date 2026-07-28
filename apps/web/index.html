@@ -197,12 +197,31 @@
           </section>
           <section class="profile-card profile-stats">
             <h2>Stats</h2>
+            <p class="hint">Click a row to see scores over time</p>
             <p id="profile-stats-empty" class="hint">No global games yet</p>
             <table id="profile-stats-table" class="stats-table" hidden>
               <thead>
                 <tr>
-                  <th>Board</th>
-                  <th>Plays</th>
+                  <th>
+                    <button type="button" class="stats-sort" data-sort="size" aria-label="Sort by size">
+                      Size
+                    </button>
+                  </th>
+                  <th>
+                    <button type="button" class="stats-sort" data-sort="mode" aria-label="Sort by mode">
+                      Mode
+                    </button>
+                  </th>
+                  <th>
+                    <button
+                      type="button"
+                      class="stats-sort"
+                      data-sort="plays"
+                      aria-label="Sort by plays"
+                    >
+                      Plays
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody id="profile-stats-body"></tbody>

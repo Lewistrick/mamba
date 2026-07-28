@@ -525,6 +525,42 @@ body {
   font-weight: 600;
 }
 
+.stats-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stats-sort::after {
+  content: "↕";
+  font-size: 0.7em;
+  opacity: 0.45;
+}
+
+.stats-sort[data-dir="asc"]::after {
+  content: "↑";
+  opacity: 1;
+  color: var(--accent-yellow);
+}
+
+.stats-sort[data-dir="desc"]::after {
+  content: "↓";
+  opacity: 1;
+  color: var(--accent-yellow);
+}
+
+.stats-sort:hover {
+  color: var(--text);
+}
+
 .stats-table tbody tr {
   cursor: pointer;
 }
@@ -537,6 +573,15 @@ body {
 .stats-table td:last-child {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.stats-table th:last-child {
+  text-align: right;
+}
+
+.stats-table th:last-child .stats-sort {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .profile-chart-panel {

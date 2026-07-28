@@ -1,0 +1,11 @@
+# Static Mamba client. Auth / DB / verify-score stay on cloud Supabase.
+services:
+  web:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    ports:
+      - "34364:80"
+    restart: unless-stopped
