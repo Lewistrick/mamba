@@ -13,133 +13,212 @@
   </head>
   <body>
     <div id="app">
-      <aside id="menu" aria-label="Game menu">
-        <h1>MAMBA</h1>
-        <p class="menu-sub">1989 · Bert Uffen</p>
+      <div id="game-shell">
+        <aside id="menu" aria-label="Game menu">
+          <h1>MAMBA</h1>
+          <p class="menu-sub">1989 · Bert Uffen</p>
 
-        <fieldset class="size-field">
-          <legend>Board size</legend>
-          <label
-            ><input type="radio" name="size" value="small" /> Small
-            <span>11×20</span></label
-          >
-          <label
-            ><input type="radio" name="size" value="medium" checked /> Medium
-            <span>22×40</span></label
-          >
-          <label
-            ><input type="radio" name="size" value="large" /> Large
-            <span>33×60</span></label
-          >
-        </fieldset>
+          <fieldset class="size-field">
+            <legend>Board size</legend>
+            <label
+              ><input type="radio" name="size" value="small" /> Small
+              <span>11×20</span></label
+            >
+            <label
+              ><input type="radio" name="size" value="medium" checked /> Medium
+              <span>22×40</span></label
+            >
+            <label
+              ><input type="radio" name="size" value="large" /> Large
+              <span>33×60</span></label
+            >
+          </fieldset>
 
-        <fieldset class="size-field" id="mode-field">
-          <legend>Mode</legend>
-          <label><input type="radio" name="play-mode" value="solo" checked /> Solo</label>
-          <label><input type="radio" name="play-mode" value="ai" /> vs AI</label>
-        </fieldset>
+          <fieldset class="size-field" id="mode-field">
+            <legend>Mode</legend>
+            <label><input type="radio" name="play-mode" value="solo" checked /> Solo</label>
+            <label><input type="radio" name="play-mode" value="ai" /> vs AI</label>
+          </fieldset>
 
-        <fieldset class="size-field" id="ai-difficulty-field" hidden>
-          <legend>AI difficulty</legend>
-          <label><input type="radio" name="ai-difficulty" value="easy" /> Easy</label>
-          <label
-            ><input type="radio" name="ai-difficulty" value="medium" checked /> Medium</label
-          >
-          <label><input type="radio" name="ai-difficulty" value="hard" /> Hard</label>
-        </fieldset>
+          <fieldset class="size-field" id="ai-difficulty-field" hidden>
+            <legend>AI difficulty</legend>
+            <label><input type="radio" name="ai-difficulty" value="easy" /> Easy</label>
+            <label
+              ><input type="radio" name="ai-difficulty" value="medium" checked /> Medium</label
+            >
+            <label><input type="radio" name="ai-difficulty" value="hard" /> Hard</label>
+          </fieldset>
 
-        <button type="button" id="btn-play" class="primary">Play</button>
+          <button type="button" id="btn-play" class="primary">Play</button>
 
-        <section id="auth-panel" class="auth-panel" hidden>
-          <h2>Account</h2>
-          <p id="auth-status" class="auth-status">Guest — local scores only</p>
-          <form id="auth-form" class="auth-form">
-            <label class="name-label">
-              Email
-              <input id="auth-email" type="email" autocomplete="email" required />
-            </label>
-            <label class="name-label">
-              Password
-              <input
-                id="auth-password"
-                type="password"
-                autocomplete="current-password"
-                minlength="6"
-                required
-              />
-            </label>
-            <button type="submit" id="btn-sign-in" class="secondary">Sign in</button>
-            <button type="button" id="btn-sign-up" class="secondary">Create account</button>
-            <button type="button" id="btn-magic-link" class="text-btn">
-              Email a magic link instead
-            </button>
-            <p id="auth-confirm" class="auth-confirm" hidden></p>
-          </form>
-          <form id="username-form" class="auth-form" hidden>
-            <p class="hint">Choose a username before you play (locked afterward).</p>
-            <label class="name-label">
-              Username
-              <input
-                id="account-username"
-                type="text"
-                maxlength="12"
-                autocomplete="nickname"
-                spellcheck="false"
-                required
-              />
-            </label>
-            <button type="submit" class="secondary">Save username</button>
-          </form>
-          <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
-        </section>
-
-        <p id="status" class="status" role="status"></p>
-        <p class="hint">Arrows to steer · S sound · P pause</p>
-      </aside>
-
-      <div id="stage">
-        <div id="playfield" class="playfield">
-          <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
-          <div id="gameover-overlay" class="gameover-overlay" hidden>
-            <p class="go-title">GAME OVER</p>
-            <pre id="go-score" class="go-score">Score: 0</pre>
-            <p id="go-save-status" class="go-save-status" hidden></p>
-            <form id="guest-score-form" class="guest-score-form">
+          <section id="auth-panel" class="auth-panel" hidden>
+            <h2>Account</h2>
+            <p id="auth-status" class="auth-status">Guest — local scores only</p>
+            <form id="auth-form" class="auth-form">
               <label class="name-label">
-                Name
+                Email
+                <input id="auth-email" type="email" autocomplete="email" required />
+              </label>
+              <label class="name-label">
+                Password
                 <input
-                  id="guest-name"
+                  id="auth-password"
+                  type="password"
+                  autocomplete="current-password"
+                  minlength="6"
+                  required
+                />
+              </label>
+              <button type="submit" id="btn-sign-in" class="secondary">Sign in</button>
+              <button type="button" id="btn-sign-up" class="secondary">Create account</button>
+              <button type="button" id="btn-magic-link" class="text-btn">
+                Email a magic link instead
+              </button>
+              <p id="auth-confirm" class="auth-confirm" hidden></p>
+            </form>
+            <form id="username-form" class="auth-form" hidden>
+              <p class="hint">Choose a username before you play (locked afterward).</p>
+              <label class="name-label">
+                Username
+                <input
+                  id="account-username"
                   type="text"
                   maxlength="12"
                   autocomplete="nickname"
                   spellcheck="false"
+                  required
                 />
               </label>
-              <button type="submit" class="primary">Save score</button>
+              <button type="submit" class="secondary">Save username</button>
             </form>
-            <button type="button" id="btn-play-again" class="secondary">Play again</button>
+            <button type="button" id="btn-profile" class="secondary" hidden>Profile</button>
+            <button type="button" id="btn-sign-out" class="secondary" hidden>Sign out</button>
+          </section>
+
+          <p id="status" class="status" role="status"></p>
+          <p class="hint">Arrows to steer · S sound · P pause</p>
+        </aside>
+
+        <div id="stage">
+          <div id="playfield" class="playfield">
+            <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
+            <div id="gameover-overlay" class="gameover-overlay" hidden>
+              <p class="go-title">GAME OVER</p>
+              <pre id="go-score" class="go-score">Score: 0</pre>
+              <p id="go-save-status" class="go-save-status" hidden></p>
+              <form id="guest-score-form" class="guest-score-form">
+                <label class="name-label">
+                  Name
+                  <input
+                    id="guest-name"
+                    type="text"
+                    maxlength="12"
+                    autocomplete="nickname"
+                    spellcheck="false"
+                  />
+                </label>
+                <button type="submit" class="primary">Save score</button>
+              </form>
+              <button type="button" id="btn-play-again" class="secondary">Play again</button>
+            </div>
           </div>
         </div>
+
+        <aside id="scores" class="leaderboard" aria-label="Leaderboard">
+          <div class="lb-header">
+            <h2>Scores</h2>
+          </div>
+          <div class="lb-filters">
+            <select id="lb-scope" aria-label="Scope">
+              <option value="local">Local</option>
+              <option value="global">Global</option>
+            </select>
+            <select id="lb-period" aria-label="Period">
+              <option value="all">All-time</option>
+              <option value="weekly">Weekly</option>
+              <option value="daily">Daily</option>
+            </select>
+          </div>
+          <ol id="lb-list" class="lb-list"></ol>
+          <p id="lb-empty" class="lb-empty">No scores yet</p>
+        </aside>
       </div>
 
-      <aside id="scores" class="leaderboard" aria-label="Leaderboard">
-        <div class="lb-header">
-          <h2>Scores</h2>
+      <div id="profile-page" class="profile-page" hidden>
+        <header class="profile-header">
+          <button type="button" id="btn-profile-back" class="secondary">← Back</button>
+          <h1>Profile</h1>
+        </header>
+        <div class="profile-grid">
+          <section class="profile-card">
+            <h2>Username</h2>
+            <form id="profile-username-form" class="auth-form">
+              <label class="name-label">
+                Display name
+                <input
+                  id="profile-username"
+                  type="text"
+                  maxlength="12"
+                  autocomplete="nickname"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+              <button type="submit" class="secondary">Update username</button>
+              <p id="profile-username-msg" class="auth-confirm" hidden></p>
+            </form>
+          </section>
+          <section class="profile-card">
+            <h2>Password</h2>
+            <form id="profile-password-form" class="auth-form">
+              <label class="name-label">
+                New password
+                <input
+                  id="profile-password"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="6"
+                  required
+                />
+              </label>
+              <label class="name-label">
+                Confirm password
+                <input
+                  id="profile-password-confirm"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="6"
+                  required
+                />
+              </label>
+              <button type="submit" class="secondary">Update password</button>
+              <p id="profile-password-msg" class="auth-confirm" hidden></p>
+            </form>
+          </section>
+          <section class="profile-card profile-stats">
+            <h2>Stats</h2>
+            <p id="profile-stats-empty" class="hint">No global games yet</p>
+            <table id="profile-stats-table" class="stats-table" hidden>
+              <thead>
+                <tr>
+                  <th>Board</th>
+                  <th>Plays</th>
+                </tr>
+              </thead>
+              <tbody id="profile-stats-body"></tbody>
+            </table>
+            <div id="profile-chart-panel" class="profile-chart-panel" hidden>
+              <h3 id="profile-chart-title"></h3>
+              <canvas
+                id="profile-chart"
+                width="640"
+                height="280"
+                aria-label="Score history"
+              ></canvas>
+            </div>
+          </section>
         </div>
-        <div class="lb-filters">
-          <select id="lb-scope" aria-label="Scope">
-            <option value="local">Local</option>
-            <option value="global">Global</option>
-          </select>
-          <select id="lb-period" aria-label="Period">
-            <option value="all">All-time</option>
-            <option value="weekly">Weekly</option>
-            <option value="daily">Daily</option>
-          </select>
-        </div>
-        <ol id="lb-list" class="lb-list"></ol>
-        <p id="lb-empty" class="lb-empty">No scores yet</p>
-      </aside>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

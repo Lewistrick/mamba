@@ -22,6 +22,11 @@ import {
   type LeaderboardPeriod,
   type ScoreEntry,
 } from "./leaderboard.ts";
+import {
+  buildStatRows,
+  drawScoreHistoryChart,
+  type StatRow,
+} from "./profileStats.ts";
 import { Renderer } from "./renderer.ts";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
 import {
@@ -31,6 +36,7 @@ import {
   type Settings,
 } from "./settings.ts";
 import {
+  fetchMyScores,
   fetchProfile,
   getSession,
   setAccountUsername,
@@ -40,6 +46,8 @@ import {
   signUpWithPassword,
   supabase,
   supabaseConfigured,
+  updateAccountPassword,
+  updateAccountUsername,
   type Profile,
 } from "./supabase.ts";
 import "./style.css";
@@ -56,7 +64,7 @@ const KEY_TO_DIR: Record<string, Direction> = {
   ArrowRight: "Right",
 };
 
-type Screen = "menu" | "playing" | "gameover";
+type Screen = "menu" | "playing" | "gameover" | "profile";
 
 interface PendingScore {
   score: number;
@@ -92,6 +100,7 @@ const signUpBtn = document.querySelector<HTMLButtonElement>("#btn-sign-up");
 const magicLinkBtn = document.querySelector<HTMLButtonElement>("#btn-magic-link");
 const usernameForm = document.querySelector<HTMLFormElement>("#username-form");
 const accountUsername = document.querySelector<HTMLInputElement>("#account-username");
+const profileBtn = document.querySelector<HTMLButtonElement>("#btn-profile");
 const signOutBtn = document.querySelector<HTMLButtonElement>("#btn-sign-out");
 const gameoverOverlay = document.querySelector<HTMLElement>("#gameover-overlay");
 const goScore = document.querySelector<HTMLElement>("#go-score");
@@ -100,6 +109,24 @@ const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-for
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
+const gameShell = document.querySelector<HTMLElement>("#game-shell");
+const profilePage = document.querySelector<HTMLElement>("#profile-page");
+const profileBackBtn = document.querySelector<HTMLButtonElement>("#btn-profile-back");
+const profileUsernameForm = document.querySelector<HTMLFormElement>("#profile-username-form");
+const profileUsernameInput = document.querySelector<HTMLInputElement>("#profile-username");
+const profileUsernameMsg = document.querySelector<HTMLElement>("#profile-username-msg");
+const profilePasswordForm = document.querySelector<HTMLFormElement>("#profile-password-form");
+const profilePasswordInput = document.querySelector<HTMLInputElement>("#profile-password");
+const profilePasswordConfirm = document.querySelector<HTMLInputElement>(
+  "#profile-password-confirm",
+);
+const profilePasswordMsg = document.querySelector<HTMLElement>("#profile-password-msg");
+const profileStatsEmpty = document.querySelector<HTMLElement>("#profile-stats-empty");
+const profileStatsTable = document.querySelector<HTMLTableElement>("#profile-stats-table");
+const profileStatsBody = document.querySelector<HTMLElement>("#profile-stats-body");
+const profileChartPanel = document.querySelector<HTMLElement>("#profile-chart-panel");
+const profileChartTitle = document.querySelector<HTMLElement>("#profile-chart-title");
+const profileChartCanvas = document.querySelector<HTMLCanvasElement>("#profile-chart");
 
 if (
   !canvasEl ||
@@ -122,13 +149,30 @@ if (
   !magicLinkBtn ||
   !usernameForm ||
   !accountUsername ||
+  !profileBtn ||
   !signOutBtn ||
   !gameoverOverlay ||
   !goScore ||
   !goSaveStatus ||
   !guestScoreForm ||
   !guestNameInput ||
-  !playAgainBtn
+  !playAgainBtn ||
+  !gameShell ||
+  !profilePage ||
+  !profileBackBtn ||
+  !profileUsernameForm ||
+  !profileUsernameInput ||
+  !profileUsernameMsg ||
+  !profilePasswordForm ||
+  !profilePasswordInput ||
+  !profilePasswordConfirm ||
+  !profilePasswordMsg ||
+  !profileStatsEmpty ||
+  !profileStatsTable ||
+  !profileStatsBody ||
+  !profileChartPanel ||
+  !profileChartTitle ||
+  !profileChartCanvas
 ) {
   throw new Error("Required DOM nodes missing");
 }
@@ -152,6 +196,7 @@ const signUpEl = signUpBtn;
 const magicLinkEl = magicLinkBtn;
 const usernameFormEl = usernameForm;
 const accountUsernameEl = accountUsername;
+const profileBtnEl = profileBtn;
 const signOutEl = signOutBtn;
 const overlayEl = gameoverOverlay;
 const goScoreEl = goScore;
@@ -159,6 +204,22 @@ const goSaveStatusEl = goSaveStatus;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
+const gameShellEl = gameShell;
+const profilePageEl = profilePage;
+const profileBackEl = profileBackBtn;
+const profileUsernameFormEl = profileUsernameForm;
+const profileUsernameEl = profileUsernameInput;
+const profileUsernameMsgEl = profileUsernameMsg;
+const profilePasswordFormEl = profilePasswordForm;
+const profilePasswordEl = profilePasswordInput;
+const profilePasswordConfirmEl = profilePasswordConfirm;
+const profilePasswordMsgEl = profilePasswordMsg;
+const profileStatsEmptyEl = profileStatsEmpty;
+const profileStatsTableEl = profileStatsTable;
+const profileStatsBodyEl = profileStatsBody;
+const profileChartPanelEl = profileChartPanel;
+const profileChartTitleEl = profileChartTitle;
+const profileChartEl = profileChartCanvas;
 
 const settings: Settings = loadSettings();
 const sounds = new SoundBoard(!settings.soundEnabled);
@@ -175,6 +236,8 @@ let pendingScore: PendingScore | null = null;
 let scoreSaved = false;
 let signedInEmail: string | null = null;
 let profile: Profile | null = null;
+let profileStatRows: StatRow[] = [];
+let selectedStatKey: string | null = null;
 
 /**
  * True when keyboard focus is in a text field.
@@ -430,6 +493,7 @@ async function refreshAuthUi(): Promise<void> {
   authConfirmEl.textContent = "";
   authFormEl.hidden = true;
   usernameFormEl.hidden = true;
+  profileBtnEl.hidden = true;
   signOutEl.hidden = true;
 
   if (!supabaseConfigured) {
@@ -450,10 +514,14 @@ async function refreshAuthUi(): Promise<void> {
     authFormEl.hidden = false;
     syncMagicLinkButton();
     syncPlayButton();
+    if (screen === "profile") {
+      showGameShell();
+    }
     return;
   }
 
   signOutEl.hidden = false;
+  profileBtnEl.hidden = false;
 
   if (profile?.usernameSet) {
     authStatusEl.textContent = profile.displayName;
@@ -464,6 +532,121 @@ async function refreshAuthUi(): Promise<void> {
   }
 
   syncPlayButton();
+}
+
+/**
+ * Shows a short status under a profile form.
+ *
+ * @param el - Message element.
+ * @param text - Message, or null to hide.
+ * @param kind - Success or error.
+ */
+function setProfileMsg(
+  el: HTMLElement,
+  text: string | null,
+  kind: "ok" | "error" = "ok",
+): void {
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+  el.style.color = kind === "ok" ? "var(--accent-blue)" : "var(--accent-red)";
+}
+
+/**
+ * Returns from the profile page to the game shell.
+ */
+function showGameShell(): void {
+  profilePageEl.hidden = true;
+  gameShellEl.hidden = false;
+  screen = game && state?.status === "gameover" ? "gameover" : "menu";
+  if (screen === "menu") {
+    paused = false;
+  }
+}
+
+/**
+ * Opens the profile page and loads stats.
+ */
+async function openProfilePage(): Promise<void> {
+  if (!signedInEmail) {
+    return;
+  }
+  hideGameOverOverlay();
+  paused = true;
+  screen = "profile";
+  gameShellEl.hidden = true;
+  profilePageEl.hidden = false;
+  profileUsernameEl.value = profile?.displayName ?? "";
+  profilePasswordEl.value = "";
+  profilePasswordConfirmEl.value = "";
+  setProfileMsg(profileUsernameMsgEl, null);
+  setProfileMsg(profilePasswordMsgEl, null);
+  selectedStatKey = null;
+  profileChartPanelEl.hidden = true;
+  await refreshProfileStats();
+}
+
+/**
+ * Reloads size/mode play counts for the signed-in user.
+ */
+async function refreshProfileStats(): Promise<void> {
+  profileStatsBodyEl.replaceChildren();
+  profileStatsEmptyEl.hidden = false;
+  profileStatsTableEl.hidden = true;
+  profileChartPanelEl.hidden = true;
+
+  const scores = await fetchMyScores();
+  profileStatRows = buildStatRows(scores);
+  if (profileStatRows.length === 0) {
+    profileStatsEmptyEl.textContent = "No global games yet";
+    return;
+  }
+
+  profileStatsEmptyEl.hidden = true;
+  profileStatsTableEl.hidden = false;
+  for (const row of profileStatRows) {
+    const tr = document.createElement("tr");
+    const key = `${row.sizeId}|${row.mode}`;
+    tr.dataset.key = key;
+    if (key === selectedStatKey) {
+      tr.dataset.active = "true";
+    }
+    tr.innerHTML = `<td></td><td></td>`;
+    tr.children[0].textContent = row.label;
+    tr.children[1].textContent = String(row.plays);
+    tr.addEventListener("click", () => {
+      selectedStatKey = key;
+      for (const el of profileStatsBodyEl.querySelectorAll("tr")) {
+        el.dataset.active = el === tr ? "true" : "false";
+      }
+      showProfileChart(row);
+    });
+    profileStatsBodyEl.append(tr);
+  }
+
+  if (selectedStatKey) {
+    const selected = profileStatRows.find(
+      (r) => `${r.sizeId}|${r.mode}` === selectedStatKey,
+    );
+    if (selected) {
+      showProfileChart(selected);
+    }
+  }
+}
+
+/**
+ * Shows the score history chart for one size/mode row.
+ *
+ * @param row - Selected stats row.
+ */
+function showProfileChart(row: StatRow): void {
+  profileChartPanelEl.hidden = false;
+  profileChartTitleEl.textContent = `${row.label} — scores over time`;
+  drawScoreHistoryChart(profileChartEl, row.scores);
 }
 
 /**
@@ -634,6 +817,9 @@ function startGame(): void {
     accountUsernameEl.focus();
     return;
   }
+  if (screen === "profile") {
+    showGameShell();
+  }
   hideGameOverOverlay();
   persistFromMenu();
   sounds.resume();
@@ -741,6 +927,14 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (screen === "profile") {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      showGameShell();
+    }
+    return;
+  }
+
   if (event.key === "Enter" || event.key === " ") {
     if (screen !== "playing") {
       event.preventDefault();
@@ -785,6 +979,11 @@ function onKeyDown(event: KeyboardEvent): void {
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
+
+  if (screen === "profile") {
+    requestAnimationFrame(frame);
+    return;
+  }
 
   if (screen === "playing" && game && !paused) {
     accumulator += dt;
@@ -985,10 +1184,65 @@ usernameFormEl.addEventListener("submit", (event) => {
 signOutEl.addEventListener("click", () => {
   void (async () => {
     await signOut();
+    if (screen === "profile") {
+      showGameShell();
+    }
     await refreshAuthUi();
     await refreshLeaderboard();
     setStatus("Signed out");
   })();
+});
+
+profileBtnEl.addEventListener("click", () => {
+  void openProfilePage();
+});
+
+profileBackEl.addEventListener("click", () => {
+  showGameShell();
+});
+
+profileUsernameFormEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void (async () => {
+    const { error } = await updateAccountUsername(profileUsernameEl.value);
+    if (error) {
+      setProfileMsg(profileUsernameMsgEl, error, "error");
+      return;
+    }
+    profile = await fetchProfile();
+    setProfileMsg(profileUsernameMsgEl, "Username updated", "ok");
+    await refreshAuthUi();
+  })();
+});
+
+profilePasswordFormEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void (async () => {
+    if (profilePasswordEl.value !== profilePasswordConfirmEl.value) {
+      setProfileMsg(profilePasswordMsgEl, "Passwords do not match", "error");
+      return;
+    }
+    const { error } = await updateAccountPassword(profilePasswordEl.value);
+    if (error) {
+      setProfileMsg(profilePasswordMsgEl, error, "error");
+      return;
+    }
+    profilePasswordEl.value = "";
+    profilePasswordConfirmEl.value = "";
+    setProfileMsg(profilePasswordMsgEl, "Password updated", "ok");
+  })();
+});
+
+window.addEventListener("resize", () => {
+  if (screen !== "profile" || !selectedStatKey) {
+    return;
+  }
+  const selected = profileStatRows.find(
+    (r) => `${r.sizeId}|${r.mode}` === selectedStatKey,
+  );
+  if (selected) {
+    drawScoreHistoryChart(profileChartEl, selected.scores);
+  }
 });
 
 for (const input of sizeInputs) {

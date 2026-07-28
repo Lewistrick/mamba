@@ -2,6 +2,7 @@
  * Supabase browser client (optional until env is configured).
  */
 
+import type { FieldSizeId } from "@mamba/engine";
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -204,4 +205,99 @@ export async function setAccountUsername(displayName: string): Promise<{ error: 
     return { error: error.message };
   }
   return { error: null };
+}
+
+/**
+ * Updates the account username (allowed after the initial lock).
+ *
+ * @param displayName - New display name.
+ * @returns Error message or null.
+ */
+export async function updateAccountUsername(
+  displayName: string,
+): Promise<{ error: string | null }> {
+  if (!supabase) {
+    return { error: "Supabase is not configured" };
+  }
+  const user = await getUser();
+  if (!user) {
+    return { error: "Not signed in" };
+  }
+  const name = displayName.replace(/\s+/g, " ").trim().slice(0, 12);
+  if (!name) {
+    return { error: "Name required" };
+  }
+
+  const { error } = await supabase.from("profiles").upsert(
+    {
+      id: user.id,
+      display_name: name,
+      username_set: true,
+    },
+    { onConflict: "id" },
+  );
+  if (error) {
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/**
+ * Updates the signed-in user's password.
+ *
+ * @param password - New password (min 6 chars).
+ * @returns Error message or null.
+ */
+export async function updateAccountPassword(
+  password: string,
+): Promise<{ error: string | null }> {
+  if (!supabase) {
+    return { error: "Supabase is not configured" };
+  }
+  if (password.length < 6) {
+    return { error: "Password must be at least 6 characters" };
+  }
+  const { error } = await supabase.auth.updateUser({ password });
+  return { error: error?.message ?? null };
+}
+
+/** One verified score row belonging to the current user. */
+export interface MyScoreRow {
+  score: number;
+  level: number;
+  sizeId: FieldSizeId;
+  mode: string;
+  createdAt: number;
+}
+
+/**
+ * Loads all verified scores for the signed-in user (for Profile stats).
+ *
+ * @returns Score rows newest-last (ascending created_at), or empty if signed out.
+ */
+export async function fetchMyScores(): Promise<MyScoreRow[]> {
+  if (!supabase) {
+    return [];
+  }
+  const user = await getUser();
+  if (!user) {
+    return [];
+  }
+  const { data, error } = await supabase
+    .from("scores")
+    .select("score, level, size_id, mode, created_at")
+    .eq("user_id", user.id)
+    .eq("verified", true)
+    .order("created_at", { ascending: true });
+  if (error || !data) {
+    console.error("fetchMyScores", error);
+    return [];
+  }
+  return data.map((row) => ({
+    score: row.score as number,
+    level: row.level as number,
+    sizeId: row.size_id as FieldSizeId,
+    mode: String(row.mode ?? "solo"),
+    createdAt: Date.parse(row.created_at as string),
+  }));
 }
