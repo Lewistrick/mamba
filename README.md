@@ -49,7 +49,9 @@ Pick **Solo** or **vs AI** (and a difficulty) in the menu before Play.
 
 ## Docker (static web)
 
-Serves the Vite build with nginx. Auth, Postgres, and `verify-score` stay on **cloud Supabase** (keys are baked in at image build time).
+Serves the Vite build with nginx under **`/mamba/`**. Auth, Postgres, and `verify-score` stay on **cloud Supabase** (keys are baked in at image build time).
+
+The container joins the shared Docker network `host-edge` as alias `mamba` so the host Caddy proxy can reach it. Public URL: [https://lewistrick.com/mamba/](https://lewistrick.com/mamba/).
 
 ```bash
 cp .env.docker.example .env
@@ -57,14 +59,26 @@ cp .env.docker.example .env
 # Supabase → Project Settings → API (same as apps/web/.env.local).
 # Leaving YOUR_PROJECT / YOUR_ANON_KEY will break sign-in with "Failed to fetch".
 
-docker compose up --build
+# Ensure host-edge exists (started by /home/weekmenu/apps/proxy).
+docker compose up -d --build
 ```
 
-Open the mapped URL (default in compose may be [http://localhost:34364](http://localhost:34364) if you changed the host port).
+Then reload Caddy so the `/mamba*` route is live (if you just added it):
 
-For magic-link redirects when testing the container, add that origin (e.g. `http://localhost:34364`) to Supabase **Authentication → URL Configuration** (Site URL / Redirect URLs).
+```bash
+cd /home/weekmenu/apps/proxy
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+```
 
-Rebuild after changing `.env` Supabase values (`docker compose up --build`) — editing `.env` alone does not update an already-built image.
+Localhost-only debug: [http://127.0.0.1:34364/mamba/](http://127.0.0.1:34364/mamba/) (path prefix required).
+
+For Auth redirects, add these to Supabase **Authentication → URL Configuration** (Site URL / Redirect URLs):
+
+- Production: `https://lewistrick.com/mamba/`
+- Local Vite: `http://localhost:5173`
+- Local container: `http://127.0.0.1:34364/mamba/`
+
+Rebuild after changing `.env` Supabase values (`docker compose up --build`) — editing `.env` alone does not update an already-built image. `npm run dev` uses base `/`; Docker builds with `VITE_BASE_PATH=/mamba/`.
 
 ## Supabase (global scores)
 
@@ -74,7 +88,7 @@ Optional. Without config, everything works offline.
 2. Apply the database schema: open **SQL Editor**, paste [`supabase/setup.sql`](supabase/setup.sql), run it once
 3. From the repo root: `npm run sync:engine`, then `npx supabase login`, `npx supabase link --project-ref <your-ref>`, and `npx supabase functions deploy verify-score`
 4. Copy [`apps/web/.env.example`](apps/web/.env.example) to `apps/web/.env.local` and set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
-5. Add `http://localhost:5173` to Auth redirect URLs
+5. Add Auth redirect URLs: `http://localhost:5173` (dev) and `https://lewistrick.com/mamba/` (production)
 6. Under **Authentication → Providers → Email**, keep Email enabled and **disable Confirm email** (free built-in mailer is limited to ~2 emails/hour; password signup then works immediately)
 
 Auth is **email + password** (magic link is optional). After sign-in, choose a **username once** before Play; that name is locked for global scores. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score`.
@@ -86,9 +100,9 @@ Auth is **email + password** (magic link is optional). After sign-in, choose a *
 ```
 apps/web/           Vite + Canvas client
 packages/engine/    Pure TypeScript game rules (no DOM)
-deploy/             nginx config for the Docker image
+deploy/             nginx config for the Docker image (/mamba/)
 Dockerfile          Multi-stage Node build → nginx
-docker-compose.yml  Local/static container on port 8080
+docker-compose.yml  Static container on host-edge (alias mamba)
 ```
 
 The engine is seeded and deterministic: the same seed and input sequence always produce the same score and state (needed later for anti-cheat and multiplayer).
@@ -100,7 +114,7 @@ The engine is seeded and deterministic: the same seed and input sequence always 
 | `npm run dev` | Start the web client |
 | `npm test` | Run engine + web unit tests |
 | `npm run build` | Typecheck engine + build the web client |
-| `docker compose up --build` | Build and serve the static client on port 8080 |
+| `docker compose up -d --build` | Build and serve under `/mamba/` on host-edge |
 
 ## Credits
 

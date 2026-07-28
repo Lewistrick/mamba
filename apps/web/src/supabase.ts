@@ -9,6 +9,15 @@ const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 /**
+ * Auth email redirect target (origin + Vite base, e.g. `https://host/mamba/`).
+ *
+ * @returns Absolute URL for `emailRedirectTo`.
+ */
+function authRedirectTo(): string {
+  return new URL(import.meta.env.BASE_URL, window.location.origin).href;
+}
+
+/**
  * True when the URL looks like a real Supabase project (not a placeholder).
  *
  * @param value - Candidate URL.
@@ -78,7 +87,7 @@ export async function signInWithMagicLink(email: string): Promise<{ error: strin
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim(),
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: authRedirectTo(),
     },
   });
   return { error: error?.message ?? null };
@@ -121,7 +130,7 @@ export async function signUpWithPassword(
     email: email.trim(),
     password,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: authRedirectTo(),
     },
   });
   if (error) {

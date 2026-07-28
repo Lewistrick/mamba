@@ -1,7 +1,11 @@
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
+/** Path prefix for production behind Caddy (`/mamba/`); local dev stays `/`. */
+const base = process.env.VITE_BASE_PATH ?? "/";
+
 export default defineConfig({
+  base,
   resolve: {
     alias: {
       "@mamba/engine": fileURLToPath(
