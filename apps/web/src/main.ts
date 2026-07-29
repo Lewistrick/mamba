@@ -273,6 +273,45 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     hideGameOverOverlay();
   },
   showGameShell,
+  playJoinSuccess: () => {
+    sounds.resume();
+    sounds.playJoinSuccess();
+  },
+  playMatchCountdown: () => {
+    sounds.resume();
+    sounds.playMatchCountdown();
+  },
+  hideReadyOverlay: () => {
+    const el = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    if (el) {
+      el.hidden = true;
+    }
+    const toggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    if (toggle) {
+      toggle.checked = false;
+      toggle.disabled = false;
+    }
+  },
+  onPregame: (view) => {
+    state = view;
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = true;
+    mpPlaying = true;
+    playBtn.textContent = "Leave match";
+    setStatus("Opponent joined — toggle Ready when set");
+  },
+  onCountdown: (view) => {
+    state = view;
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = true;
+    mpPlaying = true;
+    playBtn.textContent = "Leave match";
+    setStatus("Starting…");
+  },
   onMatchState: (view) => {
     mpPlaying = true;
     state = view;

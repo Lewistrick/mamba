@@ -8,13 +8,19 @@ import type { Direction, FieldSizeId, GameState } from "@mamba/engine";
 export type RoomVisibility = "public" | "private";
 
 /** Lobby / match lifecycle. */
-export type RoomStatus = "waiting" | "playing" | "finished";
+export type RoomStatus =
+  | "waiting"
+  | "readying"
+  | "countdown"
+  | "playing"
+  | "finished";
 
 /** Seat in a room. */
 export interface RoomPlayerInfo {
   userId: string;
   displayName: string;
   index: number;
+  ready: boolean;
 }
 
 /** Public listing row. */
@@ -43,6 +49,7 @@ export type ClientMessage =
   | { type: "join_room"; code: string }
   | { type: "list_public" }
   | { type: "leave" }
+  | { type: "set_ready"; ready: boolean }
   | { type: "input"; dir: Direction };
 
 /** Server → client. */
@@ -51,6 +58,21 @@ export type ServerMessage =
   | { type: "error"; message: string }
   | { type: "room"; room: RoomSnapshot }
   | { type: "public_rooms"; rooms: PublicRoomInfo[] }
+  | {
+      /** Both seated; board shown, waiting on Ready toggles. */
+      type: "pregame";
+      youIndex: number;
+      state: GameState;
+      names: [string, string];
+      ready: [boolean, boolean];
+    }
+  | {
+      /** Both ready — play local countdown audio; ticks begin after SEQUENCE_MS. */
+      type: "countdown";
+      youIndex: number;
+      state: GameState;
+      names: [string, string];
+    }
   | {
       type: "state";
       tick: number;
@@ -70,3 +92,6 @@ export type ServerMessage =
         opponent: { before: number; after: number; delta: number };
       } | null;
     };
+
+/** Wall-clock length of client countdown audio (3×(0.5+0.5) + 1.0). */
+export const COUNTDOWN_SEQUENCE_MS = 4000;

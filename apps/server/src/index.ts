@@ -17,6 +17,7 @@ import {
 import { updateMatchElo, type EloMatchResult } from "./elo.ts";
 import { loadDotEnv } from "./loadEnv.ts";
 import type { ClientMessage, RoomVisibility, ServerMessage } from "./protocol.ts";
+import { COUNTDOWN_SEQUENCE_MS } from "./protocol.ts";
 import { RoomManager, type Room, type Seat } from "./rooms.ts";
 
 loadDotEnv();
@@ -174,24 +175,121 @@ async function handleGameOverAsync(room: Room, state: GameState): Promise<void> 
 }
 
 /**
- * Starts the match if both seats are filled.
+ * Broadcasts pregame board + ready flags to both players.
+ *
+ * @param room - Readying room.
+ */
+function broadcastPregame(room: Room): void {
+  if (!room.game) {
+    return;
+  }
+  const names = rooms.names(room);
+  const state = room.game.getState();
+  for (let i = 0; i < room.seats.length; i += 1) {
+    const seat = room.seats[i];
+    if (!seat) {
+      continue;
+    }
+    sendMsg(seat.send, {
+      type: "pregame",
+      youIndex: i,
+      state,
+      names,
+      ready: [...room.ready] as [boolean, boolean],
+    });
+  }
+}
+
+/**
+ * Broadcasts countdown start to both players.
+ *
+ * @param room - Countdown room.
+ */
+function broadcastCountdown(room: Room): void {
+  if (!room.game) {
+    return;
+  }
+  const names = rooms.names(room);
+  const state = room.game.getState();
+  for (let i = 0; i < room.seats.length; i += 1) {
+    const seat = room.seats[i];
+    if (!seat) {
+      continue;
+    }
+    sendMsg(seat.send, {
+      type: "countdown",
+      youIndex: i,
+      state,
+      names,
+    });
+  }
+}
+
+/**
+ * When both seats are filled: prepare board and wait for Ready toggles.
  *
  * @param room - Room.
  */
-function maybeStart(room: Room): void {
+function maybeEnterPregame(room: Room): void {
   if (room.status !== "waiting" || !room.seats[0] || !room.seats[1]) {
     broadcastRoom(room);
     return;
   }
+  const err = rooms.enterPregame(room);
   broadcastRoom(room);
-  const err = rooms.startMatch(room, broadcastState, handleGameOver);
   if (err) {
     for (const seat of room.seats) {
       if (seat) {
         sendMsg(seat.send, { type: "error", message: err });
       }
     }
+    return;
   }
+  broadcastPregame(room);
+}
+
+/**
+ * After a ready change: rebroadcast, or start countdown when both are ready.
+ *
+ * @param room - Readying room.
+ */
+function afterReadyChange(room: Room): void {
+  broadcastRoom(room);
+  broadcastPregame(room);
+  if (!rooms.bothReady(room)) {
+    return;
+  }
+  if (room.status === "countdown" && room.countdownTimer) {
+    return;
+  }
+  const err = rooms.beginCountdown(room);
+  if (err) {
+    for (const seat of room.seats) {
+      if (seat) {
+        sendMsg(seat.send, { type: "error", message: err });
+      }
+    }
+    return;
+  }
+  if (room.countdownTimer) {
+    return;
+  }
+  broadcastRoom(room);
+  broadcastCountdown(room);
+  room.countdownTimer = setTimeout(() => {
+    room.countdownTimer = null;
+    if (room.status !== "countdown") {
+      return;
+    }
+    const startErr = rooms.startMatch(room, broadcastState, handleGameOver);
+    if (startErr) {
+      for (const seat of room.seats) {
+        if (seat) {
+          sendMsg(seat.send, { type: "error", message: startErr });
+        }
+      }
+    }
+  }, COUNTDOWN_SEQUENCE_MS);
 }
 
 app.get(
@@ -279,7 +377,25 @@ app.get(
                 reply({ type: "error", message: joined.error });
                 return;
               }
-              maybeStart(joined.room);
+              maybeEnterPregame(joined.room);
+              break;
+            }
+            case "set_ready": {
+              const seated = rooms.findSeat(user.userId);
+              if (!seated) {
+                reply({ type: "error", message: "Not in a room" });
+                return;
+              }
+              const err = rooms.setReady(
+                seated.room,
+                seated.index,
+                Boolean(msg.ready),
+              );
+              if (err) {
+                reply({ type: "error", message: err });
+                return;
+              }
+              afterReadyChange(seated.room);
               break;
             }
             case "list_public": {
@@ -287,7 +403,13 @@ app.get(
               break;
             }
             case "leave": {
-              rooms.leave(user.userId, handleGameOver);
+              const codes = rooms.leave(user.userId, handleGameOver);
+              for (const code of codes) {
+                const left = rooms.get(code);
+                if (left) {
+                  broadcastRoom(left);
+                }
+              }
               break;
             }
             case "input": {
@@ -301,7 +423,13 @@ app.get(
       },
       onClose() {
         if (user) {
-          rooms.leave(user.userId, handleGameOver);
+          const codes = rooms.leave(user.userId, handleGameOver);
+          for (const code of codes) {
+            const left = rooms.get(code);
+            if (left) {
+              broadcastRoom(left);
+            }
+          }
         }
       },
     };

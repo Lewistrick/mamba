@@ -9,7 +9,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - Deterministic headless engine with **replay verification** (solo + AI + online)
 - Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P; disabled in online)
 - **Solo**, **vs AI** (easy / medium / hard), or **online 1v1** (room codes; public/private)
-- Online: server-authoritative WS; time + win bonuses like vs AI; highest score wins; head-on → no win bonus; **Elo** (start 1000, K=32) updated after each match
+- Online: server-authoritative WS; time + win bonuses like vs AI; highest score wins; head-on → no win bonus; Ready toggles + countdown before start; **Elo** (start 1000, K=32) updated after each match
 - **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period (`mp` for multiplayer nets)
 - Signed-in **Profile** page: Elo rating; change username/password; play counts per size/mode; click a row for score-over-time chart (dots + 10-game rolling average; X axis by date or evenly by game)
 - **Help** page (menu): remake story plus controls, scoring, and modes

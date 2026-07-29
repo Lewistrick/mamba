@@ -47,6 +47,25 @@ describe("RoomManager", () => {
     expect(join2.ok).toBe(false);
   });
 
+  it("enters pregame and waits for both ready", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.join(seat("b", "Bob"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+    expect(created.room.status).toBe("readying");
+    expect(created.room.game).not.toBeNull();
+    expect(mgr.setReady(created.room, 0, true)).toBeNull();
+    expect(mgr.bothReady(created.room)).toBe(false);
+    expect(mgr.setReady(created.room, 1, true)).toBeNull();
+    expect(mgr.bothReady(created.room)).toBe(true);
+    expect(mgr.beginCountdown(created.room)).toBeNull();
+    expect(created.room.status).toBe("countdown");
+  });
+
   it("picks the higher score as winner", () => {
     expect(
       RoomManager.winnerIndex({

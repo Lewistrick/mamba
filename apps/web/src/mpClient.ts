@@ -13,8 +13,13 @@ export interface RoomSnapshot {
   sizeId: FieldSizeId;
   visibility: RoomVisibility;
   spectatable: boolean;
-  status: "waiting" | "playing" | "finished";
-  players: { userId: string; displayName: string; index: number }[];
+  status: "waiting" | "readying" | "countdown" | "playing" | "finished";
+  players: {
+    userId: string;
+    displayName: string;
+    index: number;
+    ready: boolean;
+  }[];
   hostUserId: string;
 }
 
@@ -32,6 +37,19 @@ export type MpServerMessage =
   | { type: "error"; message: string }
   | { type: "room"; room: RoomSnapshot }
   | { type: "public_rooms"; rooms: PublicRoomInfo[] }
+  | {
+      type: "pregame";
+      youIndex: number;
+      state: GameState;
+      names: [string, string];
+      ready: [boolean, boolean];
+    }
+  | {
+      type: "countdown";
+      youIndex: number;
+      state: GameState;
+      names: [string, string];
+    }
   | {
       type: "state";
       tick: number;
@@ -185,6 +203,15 @@ export class MpClient {
    */
   leave(): void {
     this.send({ type: "leave" });
+  }
+
+  /**
+   * Toggles ready during the pregame phase.
+   *
+   * @param ready - Desired ready state.
+   */
+  setReady(ready: boolean): void {
+    this.send({ type: "set_ready", ready });
   }
 
   /**

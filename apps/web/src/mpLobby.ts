@@ -20,6 +20,15 @@ export interface MpUiHooks {
   setStatus: (text: string) => void;
   hideOverlays: () => void;
   showGameShell: () => void;
+  playJoinSuccess: () => void;
+  playMatchCountdown: () => void;
+  onPregame: (
+    state: GameState,
+    youIndex: number,
+    names: [string, string],
+    ready: [boolean, boolean],
+  ) => void;
+  onCountdown: (state: GameState, youIndex: number, names: [string, string]) => void;
   onMatchState: (state: GameState, youIndex: number, names: [string, string]) => void;
   onMatchOver: (
     state: GameState,
@@ -32,6 +41,7 @@ export interface MpUiHooks {
     } | null,
   ) => void;
   onMatchPlaying: (playing: boolean) => void;
+  hideReadyOverlay: () => void;
 }
 
 /**
@@ -42,6 +52,8 @@ export class MpLobbyController {
   private unsub: (() => void) | null = null;
   private room: RoomSnapshot | null = null;
   private openPromise: Promise<void> | null = null;
+  private pregameShown = false;
+  private countdownUiTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * @param root - #mp-page element.
@@ -63,6 +75,11 @@ export class MpLobbyController {
     this.root.querySelector("#btn-mp-back")?.addEventListener("click", () => {
       this.close();
       this.hooks.showGameShell();
+    });
+
+    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    readyToggle?.addEventListener("change", () => {
+      this.client?.setReady(Boolean(readyToggle.checked));
     });
   }
 
@@ -146,6 +163,9 @@ export class MpLobbyController {
    */
   close(): void {
     this.openPromise = null;
+    this.clearCountdownUi();
+    this.pregameShown = false;
+    this.hooks.hideReadyOverlay();
     this.client?.leave();
     this.client?.close();
     this.client = null;
@@ -248,18 +268,51 @@ export class MpLobbyController {
       case "room":
         this.room = msg.room;
         this.renderRoom(msg.room);
+        if (msg.room.status === "waiting" && this.pregameShown) {
+          this.pregameShown = false;
+          this.clearCountdownUi();
+          this.hooks.hideReadyOverlay();
+          this.hooks.onMatchPlaying(false);
+          this.setMatchUi(false);
+          this.root.hidden = false;
+        }
         break;
       case "public_rooms":
         this.renderPublic(msg.rooms);
         break;
+      case "pregame": {
+        const view = remapStateForYou(msg.state, msg.youIndex);
+        if (!this.pregameShown) {
+          this.pregameShown = true;
+          this.hooks.playJoinSuccess();
+        }
+        this.hooks.onPregame(view, msg.youIndex, msg.names, msg.ready);
+        this.setMatchUi(true);
+        this.syncReadyOverlay(msg.names, msg.youIndex, msg.ready, false);
+        break;
+      }
+      case "countdown": {
+        const view = remapStateForYou(msg.state, msg.youIndex);
+        this.hooks.onCountdown(view, msg.youIndex, msg.names);
+        this.hooks.playMatchCountdown();
+        this.setMatchUi(true);
+        this.syncReadyOverlay(msg.names, msg.youIndex, [true, true], true);
+        this.runCountdownUi();
+        break;
+      }
       case "state": {
         const view = remapStateForYou(msg.state, msg.youIndex);
+        this.clearCountdownUi();
+        this.hooks.hideReadyOverlay();
         this.hooks.onMatchState(view, msg.youIndex, msg.names);
         this.setMatchUi(true);
         break;
       }
       case "game_over": {
         const view = remapStateForYou(msg.state, msg.youIndex);
+        this.pregameShown = false;
+        this.clearCountdownUi();
+        this.hooks.hideReadyOverlay();
         this.hooks.onMatchOver(
           view,
           msg.youIndex,
@@ -268,7 +321,6 @@ export class MpLobbyController {
           msg.elo ?? null,
         );
         this.setMatchUi(false);
-        // Local leaderboard net for this player
         const you = msg.state.players[msg.youIndex];
         const opp = msg.state.players[1 - msg.youIndex];
         if (you && opp) {
@@ -288,6 +340,87 @@ export class MpLobbyController {
     }
   }
 
+  /**
+   * Updates the ready overlay copy and checkbox.
+   *
+   * @param names - Absolute seat names.
+   * @param youIndex - Local seat.
+   * @param ready - Ready flags.
+   * @param counting - Countdown in progress.
+   */
+  private syncReadyOverlay(
+    names: [string, string],
+    youIndex: number,
+    ready: [boolean, boolean],
+    counting: boolean,
+  ): void {
+    const overlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    const joined = document.querySelector<HTMLElement>("#mp-ready-joined");
+    const peer = document.querySelector<HTMLElement>("#mp-ready-peer");
+    const toggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    const label = document.querySelector<HTMLElement>(".mp-ready-label");
+    const countdown = document.querySelector<HTMLElement>("#mp-countdown");
+    if (!overlay) {
+      return;
+    }
+    overlay.hidden = false;
+    const oppName = names[1 - youIndex] || "Opponent";
+    if (joined) {
+      joined.textContent = `${oppName} joined the room`;
+    }
+    if (peer) {
+      const oppReady = ready[1 - youIndex];
+      peer.textContent = counting
+        ? "Get ready…"
+        : oppReady
+          ? `${oppName} is ready`
+          : `Waiting for ${oppName}…`;
+    }
+    if (toggle && label) {
+      label.hidden = counting;
+      toggle.disabled = counting;
+      toggle.checked = ready[youIndex];
+    }
+    if (countdown) {
+      countdown.hidden = !counting;
+    }
+  }
+
+  /**
+   * Shows 3–2–1–GO synced with the countdown audio.
+   */
+  private runCountdownUi(): void {
+    this.clearCountdownUi();
+    const el = document.querySelector<HTMLElement>("#mp-countdown");
+    if (!el) {
+      return;
+    }
+    const steps = ["3", "2", "1", "GO"];
+    let i = 0;
+    el.hidden = false;
+    el.textContent = steps[0];
+    this.countdownUiTimer = setInterval(() => {
+      i += 1;
+      if (i >= steps.length) {
+        this.clearCountdownUi();
+        return;
+      }
+      el.textContent = steps[i];
+    }, 1000);
+  }
+
+  private clearCountdownUi(): void {
+    if (this.countdownUiTimer) {
+      clearInterval(this.countdownUiTimer);
+      this.countdownUiTimer = null;
+    }
+    const el = document.querySelector<HTMLElement>("#mp-countdown");
+    if (el) {
+      el.hidden = true;
+      el.textContent = "";
+    }
+  }
+
   private setMatchUi(playing: boolean): void {
     this.hooks.onMatchPlaying(playing);
     const hint = this.root.querySelector<HTMLElement>("#mp-match-hint");
@@ -300,7 +433,6 @@ export class MpLobbyController {
     }
     if (playing) {
       this.hooks.hideOverlays();
-      // Show game shell under the mp page? Match uses main canvas — hide mp page chrome
       this.root.hidden = true;
       this.hooks.showGameShell();
     }
@@ -315,10 +447,15 @@ export class MpLobbyController {
     }
     if (status) {
       const names = room.players.map((p) => p.displayName).join(" vs ");
-      status.textContent =
-        room.status === "waiting"
-          ? `Waiting for opponent… ${names || "you"}`
-          : `Room ${room.code}: ${names}`;
+      if (room.status === "waiting") {
+        status.textContent = `Waiting for opponent… ${names || "you"}`;
+      } else if (room.status === "readying") {
+        status.textContent = `Ready up — ${names}`;
+      } else if (room.status === "countdown") {
+        status.textContent = `Starting — ${names}`;
+      } else {
+        status.textContent = `Room ${room.code}: ${names}`;
+      }
     }
   }
 

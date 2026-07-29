@@ -9,6 +9,7 @@
 - Server-authoritative Hono WebSocket ticks at 10 TPS; clients send directions only
 - Shared board (same engine as vs AI): time bonus `+level`/s per living snake; sole survivor gets win bonus `100×level`; **head-on → no win bonus**
 - Winner = highest **total score** (not net); local/global boards store **net** (`you − opponent`) with `mode: mp`
+- When the second player joins: board opens, join sound, Ready toggles; both Ready → 3× beep (0.5s + 0.5s silence) then boop (1s, perfect fourth up), then ticks start
 - **Elo** on `profiles.elo`: initial **1000**, K=**32**; expected score `1 / (1 + 10^((Rb−Ra)/400))`; update `R + K*(S−E)` with S = 1 / 0.5 / 0 for win / draw / loss; server applies after each match (service role); shown on Profile and game-over overlay
 
 ## Packages

@@ -85,6 +85,15 @@
             <div id="stage">
                 <div id="playfield" class="playfield">
                     <canvas id="game" width="800" height="520" aria-label="Mamba game field"></canvas>
+                    <div id="mp-ready-overlay" class="mp-ready-overlay" hidden>
+                        <p id="mp-ready-joined" class="mp-ready-joined"></p>
+                        <label class="mp-ready-label">
+                            <input id="mp-ready-toggle" type="checkbox" />
+                            Ready
+                        </label>
+                        <p id="mp-ready-peer" class="hint"></p>
+                        <p id="mp-countdown" class="mp-countdown" hidden></p>
+                    </div>
                     <div id="gameover-overlay" class="gameover-overlay" hidden>
                         <p class="go-title">GAME OVER</p>
                         <pre id="go-score" class="go-score">Score: 0</pre>

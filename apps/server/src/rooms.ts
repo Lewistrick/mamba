@@ -34,9 +34,11 @@ export interface Room {
   status: RoomStatus;
   hostUserId: string;
   seats: (Seat | null)[];
+  ready: [boolean, boolean];
   game: Game | null;
   tick: number;
   timer: ReturnType<typeof setInterval> | null;
+  countdownTimer: ReturnType<typeof setTimeout> | null;
   scoresSaved: boolean;
   eloApplied: boolean;
 }
@@ -88,9 +90,11 @@ export class RoomManager {
       status: "waiting",
       hostUserId: host.user.userId,
       seats: [host, null],
+      ready: [false, false],
       game: null,
       tick: 0,
       timer: null,
+      countdownTimer: null,
       scoresSaved: false,
       eloApplied: false,
     };
@@ -125,6 +129,24 @@ export class RoomManager {
     }
     room.seats[1] = guest;
     return { ok: true, room, index: 1 };
+  }
+
+  /**
+   * Finds the room and seat index for a user.
+   *
+   * @param userId - Player id.
+   * @returns Room + index, or null.
+   */
+  findSeat(
+    userId: string,
+  ): { room: Room; index: number } | null {
+    for (const room of this.rooms.values()) {
+      const index = room.seats.findIndex((s) => s?.user.userId === userId);
+      if (index >= 0) {
+        return { room, index };
+      }
+    }
+    return null;
   }
 
   /**
@@ -179,6 +201,7 @@ export class RoomManager {
         userId: seat.user.userId,
         displayName: seat.user.displayName,
         index: i,
+        ready: room.ready[i] ?? false,
       });
     }
     return {
@@ -206,9 +229,84 @@ export class RoomManager {
   }
 
   /**
-   * Starts the match when two players are seated.
+   * Creates the shared board when both seats are filled (no ticks yet).
    *
    * @param room - Waiting room with two seats.
+   * @returns Error message or null.
+   */
+  enterPregame(room: Room): string | null {
+    if (room.status !== "waiting") {
+      return "Room already started";
+    }
+    if (!room.seats[0] || !room.seats[1]) {
+      return "Need two players";
+    }
+    this.clearCountdown(room);
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    room.game = Game.versusHuman(room.sizeId, seed);
+    room.status = "readying";
+    room.ready = [false, false];
+    room.tick = 0;
+    room.scoresSaved = false;
+    room.eloApplied = false;
+    return null;
+  }
+
+  /**
+   * Sets a player's ready flag during the readying phase.
+   *
+   * @param room - Room in readying.
+   * @param playerIndex - Seat index.
+   * @param ready - Desired ready state.
+   * @returns Error or null.
+   */
+  setReady(room: Room, playerIndex: number, ready: boolean): string | null {
+    if (room.status !== "readying") {
+      return "Ready can only be set before the countdown";
+    }
+    if (playerIndex !== 0 && playerIndex !== 1) {
+      return "Invalid seat";
+    }
+    if (!room.seats[playerIndex]) {
+      return "Not seated";
+    }
+    room.ready[playerIndex] = ready;
+    return null;
+  }
+
+  /**
+   * True when both seated players are ready.
+   *
+   * @param room - Room.
+   */
+  bothReady(room: Room): boolean {
+    return Boolean(room.seats[0] && room.seats[1] && room.ready[0] && room.ready[1]);
+  }
+
+  /**
+   * Marks countdown phase (ticks not started yet).
+   *
+   * @param room - Readying room with both ready.
+   * @returns Error or null.
+   */
+  beginCountdown(room: Room): string | null {
+    if (room.status === "countdown") {
+      return null;
+    }
+    if (room.status !== "readying" || !this.bothReady(room)) {
+      return "Both players must be ready";
+    }
+    if (!room.game) {
+      return "No game prepared";
+    }
+    room.status = "countdown";
+    return null;
+  }
+
+  /**
+   * Starts the tick loop after countdown (game already created in pregame).
+   *
+   * @param room - Countdown room.
    * @param onTick - Called each simulation tick with state.
    * @param onGameOver - Called when the run ends.
    * @returns Error message or null.
@@ -218,17 +316,15 @@ export class RoomManager {
     onTick: (room: Room, state: GameState) => void,
     onGameOver: (room: Room, state: GameState) => void,
   ): string | null {
-    if (room.status !== "waiting") {
-      return "Room already started";
+    if (room.status !== "countdown") {
+      return "Countdown has not finished";
     }
-    if (!room.seats[0] || !room.seats[1]) {
-      return "Need two players";
+    if (!room.seats[0] || !room.seats[1] || !room.game) {
+      return "Need two players and a prepared board";
     }
-    const seed = (Math.random() * 0xffffffff) >>> 0;
-    room.game = Game.versusHuman(room.sizeId, seed);
+    this.clearCountdown(room);
     room.status = "playing";
     room.tick = 0;
-    room.scoresSaved = false;
 
     const stepMs = 1000 / TICKS_PER_SECOND;
     room.timer = setInterval(() => {
@@ -248,6 +344,18 @@ export class RoomManager {
   }
 
   /**
+   * Clears a pending countdown timeout.
+   *
+   * @param room - Room.
+   */
+  clearCountdown(room: Room): void {
+    if (room.countdownTimer) {
+      clearTimeout(room.countdownTimer);
+      room.countdownTimer = null;
+    }
+  }
+
+  /**
    * Stops the tick loop and marks finished.
    *
    * @param room - Room.
@@ -259,6 +367,7 @@ export class RoomManager {
     state: GameState,
     onGameOver: (room: Room, state: GameState) => void,
   ): void {
+    this.clearCountdown(room);
     if (room.timer) {
       clearInterval(room.timer);
       room.timer = null;
@@ -323,12 +432,22 @@ export class RoomManager {
         const state = room.game.forfeit(idx);
         // Keep seats filled so score/Elo callbacks can see both players.
         this.finishMatch(room, state, onGameOver ?? (() => undefined));
+      } else if (room.status === "readying" || room.status === "countdown") {
+        this.clearCountdown(room);
+        if (room.timer) {
+          clearInterval(room.timer);
+          room.timer = null;
+        }
+        room.game = null;
+        room.status = "waiting";
+        room.ready = [false, false];
       }
 
       room.seats[idx] = null;
 
       const remaining = room.seats.filter(Boolean).length;
       if (remaining === 0 || room.status === "finished") {
+        this.clearCountdown(room);
         if (room.timer) {
           clearInterval(room.timer);
         }
@@ -337,8 +456,11 @@ export class RoomManager {
         // Host left while waiting — close room.
         this.rooms.delete(room.code);
       } else if (room.status === "waiting" && room.seats[0] === null && room.seats[1]) {
-        // Should not happen (host is seat 0); close.
-        this.rooms.delete(room.code);
+        // Promote guest to host seat.
+        room.seats[0] = room.seats[1];
+        room.seats[1] = null;
+        room.hostUserId = room.seats[0]!.user.userId;
+        room.ready = [false, false];
       }
     }
     return affected;

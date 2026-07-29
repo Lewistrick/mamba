@@ -1,5 +1,5 @@
 /**
- * Web Audio beep cues for pellet eats, molt, and death.
+ * Web Audio beep cues for pellet eats, molt, death, and multiplayer.
  */
 
 import type { GameEvent } from "@mamba/engine";
@@ -14,6 +14,11 @@ const GREEN_B = BLUE_B * 2;
 const YELLOW_A = 440;
 /** F4 — downward major third from A4. */
 const YELLOW_F = 349.23;
+
+/** Countdown beep base (Hz). */
+const COUNTDOWN_BEEP_HZ = 660;
+/** Perfect fourth above the beep. */
+const COUNTDOWN_BOOP_HZ = COUNTDOWN_BEEP_HZ * (4 / 3);
 
 /**
  * Plays short retro tone sequences. Respects a mute flag.
@@ -82,6 +87,34 @@ export class SoundBoard {
   }
 
   /**
+   * Short ascending cue when the opponent fills the room.
+   */
+  playJoinSuccess(): void {
+    if (this.muted) {
+      return;
+    }
+    this.resume();
+    this.playNotes([523.25, 659.25, 783.99], 0.09, 0.85);
+  }
+
+  /**
+   * Match-start countdown: beep (0.5s) + silence (0.5s) × 3, then boop (1s, P4 up).
+   */
+  playMatchCountdown(): void {
+    if (this.muted) {
+      return;
+    }
+    this.resume();
+    const ctx = this.ensureContext();
+    let t = ctx.currentTime;
+    for (let i = 0; i < 3; i += 1) {
+      this.scheduleTone(ctx, COUNTDOWN_BEEP_HZ, t, 0.5, 0.08);
+      t += 1; // 0.5 tone + 0.5 silence
+    }
+    this.scheduleTone(ctx, COUNTDOWN_BOOP_HZ, t, 1, 0.1);
+  }
+
+  /**
    * Plays a sequence of soft triangle beeps.
    *
    * @param freqs - Frequencies in Hz.
@@ -91,24 +124,44 @@ export class SoundBoard {
   private playNotes(freqs: number[], noteSec: number, stepFactor = 1): void {
     const ctx = this.ensureContext();
     const step = noteSec * stepFactor;
-    const peak = 0.06;
     let t = ctx.currentTime;
     for (const freq of freqs) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "triangle";
-      osc.frequency.value = freq;
-      // Gentle attack/release — less clicky than a square blip.
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
-      gain.gain.exponentialRampToValueAtTime(peak * 0.7, t + noteSec * 0.55);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + noteSec);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + noteSec + 0.01);
+      this.scheduleTone(ctx, freq, t, noteSec, 0.06);
       t += step;
     }
+  }
+
+  /**
+   * Schedules one triangle tone.
+   *
+   * @param ctx - Audio context.
+   * @param freq - Frequency Hz.
+   * @param start - Start time.
+   * @param noteSec - Duration.
+   * @param peak - Peak gain.
+   */
+  private scheduleTone(
+    ctx: AudioContext,
+    freq: number,
+    start: number,
+    noteSec: number,
+    peak: number,
+  ): void {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(
+      peak,
+      start + Math.min(0.02, noteSec * 0.1),
+    );
+    gain.gain.exponentialRampToValueAtTime(peak * 0.7, start + noteSec * 0.55);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + noteSec);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + noteSec + 0.02);
   }
 
   /**
