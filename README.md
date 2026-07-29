@@ -4,18 +4,19 @@ A TypeScript + HTML5 Canvas remake of **Mamba**, the 1989 MS-DOS snake game by B
 
 Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds most of its body into a permanent red wall, keeps the newest five segments, and a timed yellow bonus pellet appears. Pellets that would spawn on a wall become valuable green pellets instead.
 
-## Current (Phase 6)
+## Current (Phase 7)
 
 - Deterministic headless engine with **replay verification** (solo + AI + online)
 - Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P; disabled in online)
 - **Solo**, **vs AI** (easy / medium / hard), or **online 1v1** (room codes; public/private)
 - Online: server-authoritative WS; time + win bonuses like vs AI; highest score wins; head-on → no win bonus; Ready toggles + countdown before start; **Elo** (start 1000, K=32) updated after each match
+- **Spectating**: signed-in users can watch any public room (Watch button, or by code); board updates live, read-only. Spectators can toggle "join if a seat opens" — if a player leaves once a match has started readying up, the first queued spectator takes their seat and the match restarts fresh
 - **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period (`mp` for multiplayer nets)
 - Signed-in **Profile** page: Elo rating; change username/password; play counts per size/mode; click a row for score-over-time chart (dots + 10-game rolling average; X axis by date or evenly by game)
 - **Help** page (menu): remake story plus controls, scoring, and modes
 - Preferences in `localStorage`; guest play always works offline (online requires account)
 
-See [`.claude/plans/mamba-full-implementation-plan.md`](.claude/plans/mamba-full-implementation-plan.md), [`.claude/plans/phase-5-ai.md`](.claude/plans/phase-5-ai.md), and [`.claude/plans/phase-6-multiplayer.md`](.claude/plans/phase-6-multiplayer.md).
+See [`.claude/plans/mamba-full-implementation-plan.md`](.claude/plans/mamba-full-implementation-plan.md), [`.claude/plans/phase-6-multiplayer.md`](.claude/plans/phase-6-multiplayer.md), and [`.claude/plans/phase-7-spectating.md`](.claude/plans/phase-7-spectating.md).
 
 ## Rules (Phase 1)
 

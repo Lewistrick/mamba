@@ -255,6 +255,7 @@ let state: GameState | null = null;
 let aiBrain: AiBrain | null = null;
 let screen: Screen = "menu";
 let mpPlaying = false;
+let spectating = false;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -354,6 +355,35 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onMatchPlaying: (playing) => {
     mpPlaying = playing;
+  },
+  onSpectateState: (view, names, roomStatus) => {
+    spectating = true;
+    state = view;
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = false;
+    playBtn.textContent = "Stop watching";
+    const phase =
+      roomStatus === "readying"
+        ? "Readying up"
+        : roomStatus === "countdown"
+          ? "Starting"
+          : "Watching";
+    setStatus(`${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`);
+  },
+  onSpectateGameOver: (view, names, winnerIndex) => {
+    state = view;
+    const summary = winnerIndex == null ? "Draw" : `${names[winnerIndex] || "?"} wins`;
+    setStatus(`Watching — ${summary}`);
+  },
+  onSpectateEnded: (reason) => {
+    spectating = false;
+    state = null;
+    screen = "multiplayer";
+    playBtn.textContent = "Play";
+    setStatus(reason);
+    mpPageEl.hidden = false;
   },
 });
 
@@ -1072,12 +1102,14 @@ function startGame(): void {
   if (mpLobby.requestPlayAgain()) {
     return;
   }
-  if (mpPlaying) {
+  if (mpPlaying || spectating) {
+    const wasSpectating = spectating;
     mpLobby.close();
     mpPlaying = false;
+    spectating = false;
     screen = "menu";
     playBtn.textContent = "Play";
-    setStatus("Left multiplayer match");
+    setStatus(wasSpectating ? "Stopped watching" : "Left multiplayer match");
     return;
   }
   if (needsUsername()) {
@@ -1215,7 +1247,7 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   if (event.key === "p" || event.key === "P") {
-    if (event.repeat || mpPlaying) {
+    if (event.repeat || mpPlaying || spectating) {
       return;
     }
     event.preventDefault();

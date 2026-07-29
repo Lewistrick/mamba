@@ -17,6 +17,7 @@ import type {
   RoomSnapshot,
   RoomStatus,
   RoomVisibility,
+  ServerMessage,
 } from "./protocol.ts";
 
 /** Connected seat. */
@@ -43,6 +44,10 @@ export interface Room {
   countdownTimer: ReturnType<typeof setTimeout> | null;
   scoresSaved: boolean;
   eloApplied: boolean;
+  /** Read-only viewers of a public room. */
+  spectators: Seat[];
+  /** Spectators who asked to take the next vacated seat, in arrival order. */
+  joinQueue: Seat[];
 }
 
 /** Result of creating a room. */
@@ -100,6 +105,8 @@ export class RoomManager {
       countdownTimer: null,
       scoresSaved: false,
       eloApplied: false,
+      spectators: [],
+      joinQueue: [],
     };
     this.rooms.set(code, room);
     return { ok: true, room };
@@ -153,14 +160,146 @@ export class RoomManager {
   }
 
   /**
-   * Lists public waiting rooms.
+   * Finds the room a user is spectating.
+   *
+   * @param userId - Viewer id.
+   * @returns Room + spectator seat, or null.
+   */
+  findSpectator(userId: string): { room: Room; seat: Seat } | null {
+    for (const room of this.rooms.values()) {
+      const seat = room.spectators.find((s) => s.user.userId === userId);
+      if (seat) {
+        return { room, seat };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Finds a room by a raw (possibly loosely formatted) code.
+   *
+   * @param rawCode - User-entered or listed code.
+   * @returns Room or undefined.
+   */
+  findByCode(rawCode: string): Room | undefined {
+    const code = normalizeRoomCode(rawCode);
+    return code ? this.rooms.get(code) : undefined;
+  }
+
+  /**
+   * Adds a user as a read-only spectator of a public room; idempotent.
+   *
+   * @param room - Room to watch.
+   * @param seat - Viewer (send fn + identity).
+   * @returns Error message or null.
+   */
+  addSpectator(room: Room, seat: Seat): string | null {
+    if (!room.spectatable) {
+      return "This room cannot be spectated";
+    }
+    if (room.seats.some((s) => s?.user.userId === seat.user.userId)) {
+      return "You are playing in this room";
+    }
+    const existing = room.spectators.findIndex(
+      (s) => s.user.userId === seat.user.userId,
+    );
+    if (existing >= 0) {
+      room.spectators[existing] = seat;
+    } else {
+      room.spectators.push(seat);
+    }
+    return null;
+  }
+
+  /**
+   * Removes a user from spectating (and from the join queue) a room.
+   *
+   * @param room - Room.
+   * @param userId - Viewer id.
+   */
+  removeSpectator(room: Room, userId: string): void {
+    room.spectators = room.spectators.filter((s) => s.user.userId !== userId);
+    room.joinQueue = room.joinQueue.filter((s) => s.user.userId !== userId);
+  }
+
+  /**
+   * Removes a user from spectating/queueing across every room (disconnect cleanup).
+   *
+   * @param userId - Viewer id.
+   */
+  removeSpectatorEverywhere(userId: string): void {
+    for (const room of this.rooms.values()) {
+      this.removeSpectator(room, userId);
+    }
+  }
+
+  /**
+   * Queues a spectator to take the next seat vacated in this room.
+   *
+   * @param room - Room being spectated.
+   * @param userId - Viewer id (must already be spectating).
+   * @returns Error message or null.
+   */
+  queueJoin(room: Room, userId: string): string | null {
+    const seat = room.spectators.find((s) => s.user.userId === userId);
+    if (!seat) {
+      return "Not spectating this room";
+    }
+    if (!room.joinQueue.some((s) => s.user.userId === userId)) {
+      room.joinQueue.push(seat);
+    }
+    return null;
+  }
+
+  /**
+   * Removes a user from the join queue; they keep spectating.
+   *
+   * @param room - Room.
+   * @param userId - Viewer id.
+   */
+  leaveQueue(room: Room, userId: string): void {
+    room.joinQueue = room.joinQueue.filter((s) => s.user.userId !== userId);
+  }
+
+  /**
+   * Pops the next queued spectator, removing them from the spectator list too.
+   *
+   * @param room - Room.
+   * @returns The next seat to promote, or null if the queue is empty.
+   */
+  private shiftQueue(room: Room): Seat | null {
+    const next = room.joinQueue.shift();
+    if (!next) {
+      return null;
+    }
+    room.spectators = room.spectators.filter(
+      (s) => s.user.userId !== next.user.userId,
+    );
+    return next;
+  }
+
+  /**
+   * Tells every current spectator a room is gone.
+   *
+   * @param room - Room about to be removed.
+   * @param reason - Shown to spectators.
+   */
+  private notifySpectatorsEnded(room: Room, reason: string): void {
+    const msg: ServerMessage = { type: "spectate_ended", reason };
+    for (const spec of room.spectators) {
+      spec.send(JSON.stringify(msg));
+    }
+  }
+
+  /**
+   * Lists public rooms — "waiting" ones can be joined, others only watched.
    *
    * @returns Listing rows.
    */
   listPublic(): PublicRoomInfo[] {
     const out: PublicRoomInfo[] = [];
     for (const room of this.rooms.values()) {
-      if (room.visibility !== "public" || room.status !== "waiting") {
+      if (room.visibility !== "public" || room.status === "finished") {
         continue;
       }
       const host = room.seats[0];
@@ -172,6 +311,7 @@ export class RoomManager {
         sizeId: room.sizeId,
         hostName: host.user.displayName,
         playerCount: room.seats.filter(Boolean).length,
+        status: room.status,
       });
     }
     return out.sort((a, b) => a.code.localeCompare(b.code));
@@ -216,6 +356,7 @@ export class RoomManager {
       status: room.status,
       players,
       hostUserId: room.hostUserId,
+      joinQueueLength: room.joinQueue.length,
     };
   }
 
@@ -479,8 +620,16 @@ export class RoomManager {
   /**
    * Removes a user from any room; closes empty rooms; ends match if mid-game.
    *
+   * If a queued spectator is waiting and the room has already reached
+   * pregame (readying/countdown/playing) — or finished and is between
+   * matches, waiting on rematch votes — the vacated seat is handed to them
+   * and the match restarts from a fresh pregame instead of forfeiting or
+   * (for a finished room) just reopening for a random new joiner. Rematch
+   * voting itself never touches this: as long as both seated players stay
+   * and vote rather than leaving, the queue is never consulted.
+   *
    * @param userId - Who left.
-   * @param onGameOver - If leaving mid-match.
+   * @param onGameOver - If leaving mid-match with no replacement available.
    * @returns Affected room codes.
    */
   leave(
@@ -494,6 +643,29 @@ export class RoomManager {
         continue;
       }
       affected.push(room.code);
+
+      const pastLobby =
+        room.status === "readying" ||
+        room.status === "countdown" ||
+        room.status === "playing" ||
+        room.status === "finished";
+      const replacement = pastLobby ? this.shiftQueue(room) : null;
+
+      if (replacement) {
+        this.clearCountdown(room);
+        if (room.timer) {
+          clearInterval(room.timer);
+          room.timer = null;
+        }
+        room.game = null;
+        room.status = "waiting";
+        room.ready = [false, false];
+        room.rematch = [false, false];
+        room.seats[idx] = replacement;
+        // Room stays full (2 seats) — skip the close/promote checks below;
+        // the caller re-enters pregame for the fresh pairing.
+        continue;
+      }
 
       if (room.status === "playing" && room.game) {
         const state = room.game.forfeit(idx);
@@ -519,6 +691,7 @@ export class RoomManager {
         if (room.timer) {
           clearInterval(room.timer);
         }
+        this.notifySpectatorsEnded(room, "Room closed");
         this.rooms.delete(room.code);
       } else if (room.status === "finished") {
         // Opponent left after the match — survivor waits alone for a new joiner.
@@ -538,6 +711,7 @@ export class RoomManager {
         }
       } else if (room.status === "waiting" && idx === 0) {
         // Host left while waiting — close room.
+        this.notifySpectatorsEnded(room, "Room closed");
         this.rooms.delete(room.code);
       } else if (room.status === "waiting" && room.seats[0] === null && room.seats[1]) {
         // Promote guest to host seat.

@@ -53,6 +53,17 @@ export interface MpUiHooks {
   ) => void;
   onMatchPlaying: (playing: boolean) => void;
   hideReadyOverlay: () => void;
+  onSpectateState: (
+    state: GameState,
+    names: [string, string],
+    status: RoomSnapshot["status"],
+  ) => void;
+  onSpectateGameOver: (
+    state: GameState,
+    names: [string, string],
+    winnerIndex: number | null,
+  ) => void;
+  onSpectateEnded: (reason: string) => void;
 }
 
 /**
@@ -67,6 +78,8 @@ export class MpLobbyController {
   private countdownUiTimer: ReturnType<typeof setInterval> | null = null;
   /** Next pregame is a rematch — skip the “opponent joined” sound. */
   private expectRematchPregame = false;
+  private spectating = false;
+  private queued = false;
 
   /**
    * @param root - #mp-page element.
@@ -82,6 +95,9 @@ export class MpLobbyController {
     this.root.querySelector("#btn-mp-join")?.addEventListener("click", () => {
       void this.joinRoom();
     });
+    this.root.querySelector("#btn-mp-watch")?.addEventListener("click", () => {
+      void this.watchByCode();
+    });
     this.root.querySelector("#btn-mp-refresh")?.addEventListener("click", () => {
       void this.ensureConnected().then(() => this.client?.listPublic());
     });
@@ -93,6 +109,15 @@ export class MpLobbyController {
     const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
     readyToggle?.addEventListener("change", () => {
       this.client?.setReady(Boolean(readyToggle.checked));
+    });
+
+    const queueToggle = document.querySelector<HTMLInputElement>("#mp-queue-toggle");
+    queueToggle?.addEventListener("change", () => {
+      if (queueToggle.checked) {
+        this.client?.queueJoin();
+      } else {
+        this.client?.leaveQueue();
+      }
     });
   }
 
@@ -123,6 +148,13 @@ export class MpLobbyController {
     this.client.playAgain();
     this.hooks.setStatus("Play again 1/2 — waiting…");
     return true;
+  }
+
+  /**
+   * Whether this client is currently a read-only spectator.
+   */
+  get isSpectating(): boolean {
+    return this.spectating;
   }
 
   /**
@@ -200,6 +232,9 @@ export class MpLobbyController {
     this.openPromise = null;
     this.clearCountdownUi();
     this.pregameShown = false;
+    this.spectating = false;
+    this.queued = false;
+    this.hideSpectateOverlay();
     this.hooks.hideReadyOverlay();
     this.client?.leave();
     this.client?.close();
@@ -283,6 +318,84 @@ export class MpLobbyController {
     }
   }
 
+  /**
+   * Watches a room by its code (from the "Join with code" field).
+   */
+  private async watchByCode(): Promise<void> {
+    const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
+    const code = input?.value.trim() ?? "";
+    await this.watch(code);
+  }
+
+  /**
+   * Starts read-only spectating of a public room.
+   *
+   * @param code - Room code.
+   */
+  async watch(code: string): Promise<void> {
+    const status = this.root.querySelector<HTMLElement>("#mp-status");
+    try {
+      await this.ensureConnected();
+      if (!this.client?.connected) {
+        return;
+      }
+      this.client.spectate(code);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not watch room";
+      if (status) {
+        status.textContent = message;
+      }
+      this.hooks.setStatus(message);
+    }
+  }
+
+  private hideSpectateOverlay(): void {
+    const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
+    if (overlay) {
+      overlay.hidden = true;
+    }
+    const toggle = document.querySelector<HTMLInputElement>("#mp-queue-toggle");
+    if (toggle) {
+      toggle.checked = false;
+    }
+  }
+
+  /**
+   * Updates the spectate overlay copy while watching a match.
+   *
+   * @param names - Absolute seat names.
+   * @param status - Room status driving the headline.
+   */
+  private syncSpectateOverlay(
+    names: [string, string],
+    status: RoomSnapshot["status"],
+  ): void {
+    const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
+    const title = document.querySelector<HTMLElement>("#mp-spectate-title");
+    const queueText = document.querySelector<HTMLElement>("#mp-spectate-queue");
+    if (!overlay) {
+      return;
+    }
+    overlay.hidden = false;
+    if (title) {
+      const phase =
+        status === "readying"
+          ? "Readying up"
+          : status === "countdown"
+            ? "Starting"
+            : "Watching";
+      title.textContent = `${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`;
+    }
+    if (queueText) {
+      const len = this.room?.joinQueueLength ?? 0;
+      queueText.textContent = this.queued
+        ? `You'll join automatically if a seat opens (${len} waiting)`
+        : len > 0
+          ? `${len} spectator${len === 1 ? "" : "s"} queued to join`
+          : "";
+    }
+  }
+
   private onMessage(
     msg: import("./mpClient.ts").MpServerMessage,
   ): void {
@@ -319,6 +432,11 @@ export class MpLobbyController {
         this.renderPublic(msg.rooms);
         break;
       case "pregame": {
+        // Arriving here always means we're seated (including just-promoted
+        // spectators) — drop any spectator UI left over from watching.
+        this.spectating = false;
+        this.queued = false;
+        this.hideSpectateOverlay();
         const view = remapStateForYou(msg.state, msg.youIndex);
         if (!this.pregameShown) {
           this.pregameShown = true;
@@ -376,6 +494,41 @@ export class MpLobbyController {
             mode: "mp",
             createdAt: Date.now(),
           });
+        }
+        break;
+      }
+      case "spectate_state": {
+        this.spectating = true;
+        this.setMatchUi(true);
+        this.syncSpectateOverlay(msg.names, msg.status);
+        this.hooks.onSpectateState(msg.state, msg.names, msg.status);
+        break;
+      }
+      case "spectate_game_over": {
+        this.hooks.onSpectateGameOver(msg.state, msg.names, msg.winnerIndex);
+        break;
+      }
+      case "spectate_ended": {
+        this.spectating = false;
+        this.queued = false;
+        this.hideSpectateOverlay();
+        this.setMatchUi(false);
+        this.root.hidden = false;
+        this.hooks.onSpectateEnded(msg.reason);
+        this.client?.listPublic();
+        break;
+      }
+      case "queue_ack": {
+        this.queued = msg.queued;
+        const toggle = document.querySelector<HTMLInputElement>("#mp-queue-toggle");
+        if (toggle) {
+          toggle.checked = msg.queued;
+        }
+        if (this.room) {
+          this.syncSpectateOverlay(
+            this.room.players.map((p) => p.displayName) as [string, string],
+            this.room.status,
+          );
         }
         break;
       }
@@ -534,14 +687,29 @@ export class MpLobbyController {
     empty.hidden = rooms.length > 0;
     for (const r of rooms) {
       const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "text-btn";
-      btn.textContent = `${r.code} · ${r.sizeId} · ${r.hostName} (${r.playerCount}/2)`;
-      btn.addEventListener("click", () => {
-        this.client?.joinRoom(r.code);
+      const label = document.createElement("span");
+      label.textContent = `${r.code} · ${r.sizeId} · ${r.hostName} (${r.playerCount}/2)${
+        r.status === "waiting" ? "" : ` · ${r.status}`
+      }`;
+      li.append(label);
+      if (r.status === "waiting") {
+        const joinBtn = document.createElement("button");
+        joinBtn.type = "button";
+        joinBtn.className = "text-btn";
+        joinBtn.textContent = "Join";
+        joinBtn.addEventListener("click", () => {
+          this.client?.joinRoom(r.code);
+        });
+        li.append(joinBtn);
+      }
+      const watchBtn = document.createElement("button");
+      watchBtn.type = "button";
+      watchBtn.className = "text-btn";
+      watchBtn.textContent = "Watch";
+      watchBtn.addEventListener("click", () => {
+        void this.watch(r.code);
       });
-      li.append(btn);
+      li.append(watchBtn);
       list.append(li);
     }
   }

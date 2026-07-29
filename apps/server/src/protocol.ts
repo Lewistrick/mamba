@@ -31,6 +31,8 @@ export interface PublicRoomInfo {
   sizeId: FieldSizeId;
   hostName: string;
   playerCount: number;
+  /** "waiting" rooms can be joined; any other (non-finished) status can only be watched. */
+  status: RoomStatus;
 }
 
 /** Snapshot sent to clients. */
@@ -42,6 +44,8 @@ export interface RoomSnapshot {
   status: RoomStatus;
   players: RoomPlayerInfo[];
   hostUserId: string;
+  /** Spectators currently queued to take the next vacated seat. */
+  joinQueueLength: number;
 }
 
 /** Client → server. */
@@ -53,7 +57,11 @@ export type ClientMessage =
   | { type: "leave" }
   | { type: "set_ready"; ready: boolean }
   | { type: "play_again" }
-  | { type: "input"; dir: Direction };
+  | { type: "input"; dir: Direction }
+  | { type: "spectate"; code: string }
+  | { type: "stop_spectate" }
+  | { type: "queue_join" }
+  | { type: "leave_queue" };
 
 /** Server → client. */
 export type ServerMessage =
@@ -94,7 +102,24 @@ export type ServerMessage =
         you: { before: number; after: number; delta: number };
         opponent: { before: number; after: number; delta: number };
       } | null;
-    };
+    }
+  | {
+      /** Read-only board push to spectators (pregame/countdown/playing); absolute seats, no youIndex. */
+      type: "spectate_state";
+      tick: number;
+      status: RoomStatus;
+      state: GameState;
+      names: [string, string];
+    }
+  | {
+      /** Read-only match end for spectators; no Elo (private to the players). */
+      type: "spectate_game_over";
+      state: GameState;
+      names: [string, string];
+      winnerIndex: number | null;
+    }
+  | { type: "spectate_ended"; reason: string }
+  | { type: "queue_ack"; queued: boolean };
 
 /** Wall-clock length of client countdown audio (3×(0.5+0.5) + 1.0). */
 export const COUNTDOWN_SEQUENCE_MS = 4000;

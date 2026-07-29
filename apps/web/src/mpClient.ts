@@ -8,13 +8,16 @@ import { versusNetScore } from "@mamba/engine";
 /** Room visibility. */
 export type RoomVisibility = "public" | "private";
 
+/** Room lifecycle status. */
+export type RoomStatus = "waiting" | "readying" | "countdown" | "playing" | "finished";
+
 /** Room snapshot from the server. */
 export interface RoomSnapshot {
   code: string;
   sizeId: FieldSizeId;
   visibility: RoomVisibility;
   spectatable: boolean;
-  status: "waiting" | "readying" | "countdown" | "playing" | "finished";
+  status: RoomStatus;
   players: {
     userId: string;
     displayName: string;
@@ -23,6 +26,8 @@ export interface RoomSnapshot {
     rematchWanted?: boolean;
   }[];
   hostUserId: string;
+  /** Spectators currently queued to take the next vacated seat. */
+  joinQueueLength: number;
 }
 
 /** Public lobby row. */
@@ -31,6 +36,8 @@ export interface PublicRoomInfo {
   sizeId: FieldSizeId;
   hostName: string;
   playerCount: number;
+  /** "waiting" rooms can be joined; any other (non-finished) status can only be watched. */
+  status: RoomStatus;
 }
 
 /** Server → client messages. */
@@ -69,7 +76,23 @@ export type MpServerMessage =
         you: { before: number; after: number; delta: number };
         opponent: { before: number; after: number; delta: number };
       } | null;
-    };
+    }
+  | {
+      /** Read-only board push while spectating; absolute seats, no youIndex. */
+      type: "spectate_state";
+      tick: number;
+      status: RoomStatus;
+      state: GameState;
+      names: [string, string];
+    }
+  | {
+      type: "spectate_game_over";
+      state: GameState;
+      names: [string, string];
+      winnerIndex: number | null;
+    }
+  | { type: "spectate_ended"; reason: string }
+  | { type: "queue_ack"; queued: boolean };
 
 type Handler = (msg: MpServerMessage) => void;
 
@@ -230,6 +253,36 @@ export class MpClient {
    */
   sendInput(dir: Direction): void {
     this.send({ type: "input", dir });
+  }
+
+  /**
+   * Starts read-only spectating of a public room.
+   *
+   * @param code - Room code.
+   */
+  spectate(code: string): void {
+    this.send({ type: "spectate", code });
+  }
+
+  /**
+   * Stops spectating (also leaves the join queue server-side).
+   */
+  stopSpectate(): void {
+    this.send({ type: "stop_spectate" });
+  }
+
+  /**
+   * Joins the queue to take the next seat vacated in the spectated room.
+   */
+  queueJoin(): void {
+    this.send({ type: "queue_join" });
+  }
+
+  /**
+   * Leaves the join queue; keeps spectating.
+   */
+  leaveQueue(): void {
+    this.send({ type: "leave_queue" });
   }
 
   private send(msg: Record<string, unknown>): void {

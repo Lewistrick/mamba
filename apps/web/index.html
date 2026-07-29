@@ -94,6 +94,14 @@
                         <p id="mp-ready-peer" class="hint"></p>
                         <p id="mp-countdown" class="mp-countdown" hidden></p>
                     </div>
+                    <div id="mp-spectate-overlay" class="mp-ready-overlay" hidden>
+                        <p id="mp-spectate-title" class="mp-ready-joined"></p>
+                        <label class="mp-ready-label">
+                            <input id="mp-queue-toggle" type="checkbox" />
+                            Join if a seat opens
+                        </label>
+                        <p id="mp-spectate-queue" class="hint"></p>
+                    </div>
                     <div id="gameover-overlay" class="gameover-overlay" hidden>
                         <p class="go-title">GAME OVER</p>
                         <pre id="go-score" class="go-score">Score: 0</pre>
@@ -308,6 +316,7 @@
                         <input id="mp-join-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC123" />
                     </label>
                     <button type="button" id="btn-mp-join" class="secondary">Join</button>
+                    <button type="button" id="btn-mp-watch" class="text-btn">Watch instead</button>
                 </section>
                 <section class="profile-card">
                     <h2>Public rooms</h2>

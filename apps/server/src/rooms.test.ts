@@ -88,6 +88,140 @@ describe("RoomManager", () => {
     expect(snap.players.every((p) => p.rematchWanted === false)).toBe(true);
   });
 
+  it("rejects spectating a private room", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "private");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.addSpectator(created.room, seat("c", "Carol"))).toBe(
+      "This room cannot be spectated",
+    );
+  });
+
+  it("rejects a seated player spectating their own room", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.addSpectator(created.room, seat("a", "Alice"))).toBe(
+      "You are playing in this room",
+    );
+  });
+
+  it("queues and unqueues a spectator", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.queueJoin(created.room, "c")).toBe("Not spectating this room");
+    expect(mgr.addSpectator(created.room, seat("c", "Carol"))).toBeNull();
+    expect(mgr.queueJoin(created.room, "c")).toBeNull();
+    expect(created.room.joinQueue).toHaveLength(1);
+    expect(mgr.queueJoin(created.room, "c")).toBeNull();
+    expect(created.room.joinQueue).toHaveLength(1);
+    mgr.leaveQueue(created.room, "c");
+    expect(created.room.joinQueue).toHaveLength(0);
+  });
+
+  it("removes a spectator from every room on disconnect", () => {
+    const mgr = new RoomManager();
+    const r1 = mgr.create(seat("a", "Alice"), "medium", "public");
+    const r2 = mgr.create(seat("b", "Bob"), "medium", "public");
+    if (!r1.ok || !r2.ok) {
+      return;
+    }
+    mgr.addSpectator(r1.room, seat("c", "Carol"));
+    mgr.addSpectator(r2.room, seat("c", "Carol"));
+    mgr.queueJoin(r1.room, "c");
+    mgr.removeSpectatorEverywhere("c");
+    expect(r1.room.spectators).toHaveLength(0);
+    expect(r1.room.joinQueue).toHaveLength(0);
+    expect(r2.room.spectators).toHaveLength(0);
+  });
+
+  it("hands a vacated seat to the queued spectator instead of forfeiting", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const room = created.room;
+    expect(mgr.join(seat("b", "Bob"), room.code).ok).toBe(true);
+    expect(mgr.enterPregame(room)).toBeNull();
+    expect(mgr.addSpectator(room, seat("c", "Carol"))).toBeNull();
+    expect(mgr.queueJoin(room, "c")).toBeNull();
+
+    const gameOverCalls: unknown[] = [];
+    const affected = mgr.leave("a", () => gameOverCalls.push(true));
+
+    expect(affected).toEqual([room.code]);
+    expect(gameOverCalls).toHaveLength(0);
+    expect(room.status).toBe("waiting");
+    expect(room.seats[0]?.user.userId).toBe("c");
+    expect(room.seats[1]?.user.userId).toBe("b");
+    expect(room.spectators).toHaveLength(0);
+    expect(room.joinQueue).toHaveLength(0);
+    expect(mgr.get(room.code)).toBe(room);
+  });
+
+  it("still forfeits mid-match when no spectator is queued", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const room = created.room;
+    expect(mgr.join(seat("b", "Bob"), room.code).ok).toBe(true);
+    expect(mgr.enterPregame(room)).toBeNull();
+    expect(mgr.setReady(room, 0, true)).toBeNull();
+    expect(mgr.setReady(room, 1, true)).toBeNull();
+    expect(mgr.beginCountdown(room)).toBeNull();
+    expect(
+      mgr.startMatch(
+        room,
+        () => undefined,
+        () => undefined,
+      ),
+    ).toBeNull();
+
+    const gameOverCalls: unknown[] = [];
+    mgr.leave("a", () => gameOverCalls.push(true));
+
+    expect(gameOverCalls).toHaveLength(1);
+    // Room persists — survivor is promoted to host and waits for a new joiner
+    // (matches the "opponent left after the match" behavior for any finished room).
+    expect(mgr.get(room.code)).toBe(room);
+    expect(room.status).toBe("waiting");
+    expect(room.seats[0]?.user.userId).toBe("b");
+    expect(room.seats[1]).toBeNull();
+  });
+
+  it("notifies spectators when a room closes", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const room = created.room;
+    const received: string[] = [];
+    room.spectators.push({
+      user: { userId: "c", displayName: "Carol" },
+      send: (data) => received.push(data),
+    });
+    mgr.leave("a");
+    expect(received).toHaveLength(1);
+    expect(JSON.parse(received[0])).toMatchObject({ type: "spectate_ended" });
+  });
+
   it("picks the higher score as winner", () => {
     expect(
       RoomManager.winnerIndex({

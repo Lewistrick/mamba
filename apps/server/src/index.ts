@@ -55,6 +55,31 @@ function broadcastRoom(room: Room): void {
     }
     sendMsg(seat.send, { type: "room", room: snap });
   }
+  for (const spec of room.spectators) {
+    sendMsg(spec.send, { type: "room", room: snap });
+  }
+}
+
+/**
+ * Broadcasts the current absolute board to spectators only.
+ *
+ * @param room - Room with a live game (any pregame/countdown/playing phase).
+ */
+function broadcastSpectateState(room: Room): void {
+  if (!room.game || room.spectators.length === 0) {
+    return;
+  }
+  const names = rooms.names(room);
+  const state = room.game.getState();
+  for (const spec of room.spectators) {
+    sendMsg(spec.send, {
+      type: "spectate_state",
+      tick: room.tick,
+      status: room.status,
+      state,
+      names,
+    });
+  }
 }
 
 /**
@@ -78,6 +103,7 @@ function broadcastState(room: Room, state: GameState): void {
       names,
     });
   }
+  broadcastSpectateState(room);
 }
 
 /**
@@ -99,6 +125,9 @@ function handleGameOver(room: Room, state: GameState): void {
 async function handleGameOverAsync(room: Room, state: GameState): Promise<void> {
   const names = rooms.names(room);
   const winnerIndex = RoomManager.winnerIndex(state);
+  for (const spec of room.spectators) {
+    sendMsg(spec.send, { type: "spectate_game_over", state, names, winnerIndex });
+  }
   // Capture before any await — leave() may clear seats after finishMatch returns.
   const seats = [...room.seats] as (Seat | null)[];
   let eloResult: EloMatchResult | null = null;
@@ -202,6 +231,7 @@ function broadcastPregame(room: Room): void {
       ready: [...room.ready] as [boolean, boolean],
     });
   }
+  broadcastSpectateState(room);
 }
 
 /**
@@ -227,6 +257,7 @@ function broadcastCountdown(room: Room): void {
       names,
     });
   }
+  broadcastSpectateState(room);
 }
 
 /**
@@ -425,16 +456,71 @@ app.get(
             }
             case "leave": {
               const codes = rooms.leave(user.userId, handleGameOver);
+              rooms.removeSpectatorEverywhere(user.userId);
               for (const code of codes) {
                 const left = rooms.get(code);
                 if (left) {
-                  broadcastRoom(left);
+                  maybeEnterPregame(left);
                 }
               }
               break;
             }
             case "input": {
               rooms.queueInputForUser(user.userId, msg.dir as Direction);
+              break;
+            }
+            case "spectate": {
+              const room = rooms.findByCode(msg.code);
+              if (!room) {
+                reply({ type: "error", message: "Room not found" });
+                return;
+              }
+              const err = rooms.addSpectator(room, seat);
+              if (err) {
+                reply({ type: "error", message: err });
+                return;
+              }
+              reply({ type: "room", room: rooms.snapshot(room) });
+              if (room.game) {
+                reply({
+                  type: "spectate_state",
+                  tick: room.tick,
+                  status: room.status,
+                  state: room.game.getState(),
+                  names: rooms.names(room),
+                });
+              }
+              break;
+            }
+            case "stop_spectate": {
+              const found = rooms.findSpectator(user.userId);
+              if (found) {
+                rooms.removeSpectator(found.room, user.userId);
+              }
+              break;
+            }
+            case "queue_join": {
+              const found = rooms.findSpectator(user.userId);
+              if (!found) {
+                reply({ type: "error", message: "Not spectating a room" });
+                return;
+              }
+              const err = rooms.queueJoin(found.room, user.userId);
+              if (err) {
+                reply({ type: "error", message: err });
+                return;
+              }
+              reply({ type: "queue_ack", queued: true });
+              broadcastRoom(found.room);
+              break;
+            }
+            case "leave_queue": {
+              const found = rooms.findSpectator(user.userId);
+              if (found) {
+                rooms.leaveQueue(found.room, user.userId);
+                broadcastRoom(found.room);
+              }
+              reply({ type: "queue_ack", queued: false });
               break;
             }
             default:
@@ -445,10 +531,11 @@ app.get(
       onClose() {
         if (user) {
           const codes = rooms.leave(user.userId, handleGameOver);
+          rooms.removeSpectatorEverywhere(user.userId);
           for (const code of codes) {
             const left = rooms.get(code);
             if (left) {
-              broadcastRoom(left);
+              maybeEnterPregame(left);
             }
           }
         }

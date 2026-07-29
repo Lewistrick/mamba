@@ -106,9 +106,10 @@ flowchart LR
 - Signed-in + username required; winner = highest score; time/win bonuses like vs AI (no win bonus on head-on)
 - See [phase-6-multiplayer.md](phase-6-multiplayer.md)
 
-## Phase 7 — Spectating
+## Phase 7 — Spectating (done)
 
 - Auth-gated read-only WS clients; late join via full snapshot
+- Join queue: a queued spectator fills a seat vacated after pregame starts; match restarts fresh (no forfeit)
 - See [phase-7-spectating.md](phase-7-spectating.md)
 
 ## Phase 8 — Divisions / tournaments (stretch)
