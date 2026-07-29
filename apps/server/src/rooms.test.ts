@@ -66,6 +66,28 @@ describe("RoomManager", () => {
     expect(created.room.status).toBe("countdown");
   });
 
+  it("returns to readying after both rematch votes", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.join(seat("b", "Bob"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+    created.room.status = "finished";
+    created.room.game = null;
+    expect(mgr.requestRematch(created.room, 0)).toBe("waiting");
+    expect(created.room.status).toBe("finished");
+    expect(mgr.requestRematch(created.room, 1)).toBe("readying");
+    expect(created.room.status).toBe("readying");
+    expect(created.room.ready).toEqual([false, false]);
+    expect(created.room.rematch).toEqual([false, false]);
+    expect(created.room.game).not.toBeNull();
+    const snap = mgr.snapshot(created.room);
+    expect(snap.players.every((p) => p.rematchWanted === false)).toBe(true);
+  });
+
   it("picks the higher score as winner", () => {
     expect(
       RoomManager.winnerIndex({

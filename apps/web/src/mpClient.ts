@@ -20,6 +20,7 @@ export interface RoomSnapshot {
     displayName: string;
     index: number;
     ready: boolean;
+    rematchWanted?: boolean;
   }[];
   hostUserId: string;
 }
@@ -213,6 +214,13 @@ export class MpClient {
    */
   setReady(ready: boolean): void {
     this.send({ type: "set_ready", ready });
+  }
+
+  /**
+   * Votes to rematch after a finished match (both players must vote).
+   */
+  playAgain(): void {
+    this.send({ type: "play_again" });
   }
 
   /**

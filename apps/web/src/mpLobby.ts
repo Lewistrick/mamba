@@ -65,6 +65,8 @@ export class MpLobbyController {
   private openPromise: Promise<void> | null = null;
   private pregameShown = false;
   private countdownUiTimer: ReturnType<typeof setInterval> | null = null;
+  /** Next pregame is a rematch — skip the “opponent joined” sound. */
+  private expectRematchPregame = false;
 
   /**
    * @param root - #mp-page element.
@@ -99,6 +101,28 @@ export class MpLobbyController {
    */
   get inMatch(): boolean {
     return this.room?.status === "playing";
+  }
+
+  /**
+   * True when the last MP match finished and the socket is still in that room.
+   */
+  get canRematch(): boolean {
+    return this.room?.status === "finished" && Boolean(this.client?.connected);
+  }
+
+  /**
+   * Votes to return to the Ready phase after a finished multiplayer match.
+   *
+   * @returns True when the rematch request was sent (caller should not start solo).
+   */
+  requestPlayAgain(): boolean {
+    if (!this.canRematch || !this.client) {
+      return false;
+    }
+    this.expectRematchPregame = true;
+    this.client.playAgain();
+    this.hooks.setStatus("Play again 1/2 — waiting…");
+    return true;
   }
 
   /**
@@ -279,6 +303,9 @@ export class MpLobbyController {
       case "room":
         this.room = msg.room;
         this.renderRoom(msg.room);
+        if (msg.room.status === "finished") {
+          this.updateRematchStatus(msg.room);
+        }
         if (msg.room.status === "waiting" && this.pregameShown) {
           this.pregameShown = false;
           this.clearCountdownUi();
@@ -295,8 +322,11 @@ export class MpLobbyController {
         const view = remapStateForYou(msg.state, msg.youIndex);
         if (!this.pregameShown) {
           this.pregameShown = true;
-          this.hooks.playJoinSuccess();
+          if (!this.expectRematchPregame) {
+            this.hooks.playJoinSuccess();
+          }
         }
+        this.expectRematchPregame = false;
         this.hooks.onPregame(view, msg.youIndex, msg.names, msg.ready);
         this.setMatchUi(true);
         this.syncReadyOverlay(msg.names, msg.youIndex, msg.ready, false);
@@ -322,6 +352,7 @@ export class MpLobbyController {
       case "game_over": {
         const view = remapStateForYou(msg.state, msg.youIndex);
         this.pregameShown = false;
+        this.expectRematchPregame = false;
         this.clearCountdownUi();
         this.hooks.hideReadyOverlay();
         this.setMatchUi(false);
@@ -466,9 +497,30 @@ export class MpLobbyController {
         status.textContent = `Ready up — ${names}`;
       } else if (room.status === "countdown") {
         status.textContent = `Starting — ${names}`;
+      } else if (room.status === "finished") {
+        const rematchCount = room.players.filter((p) => p.rematchWanted).length;
+        status.textContent =
+          rematchCount === 0
+            ? `Match over — ${names}`
+            : `Play again ${rematchCount}/2 — ${names}`;
       } else {
         status.textContent = `Room ${room.code}: ${names}`;
       }
+    }
+  }
+
+  /**
+   * Updates the game-shell status while waiting for a rematch vote.
+   *
+   * @param room - Finished room snapshot.
+   */
+  private updateRematchStatus(room: RoomSnapshot): void {
+    const rematchCount = room.players.filter((p) => p.rematchWanted).length;
+    if (rematchCount === 0) {
+      return;
+    }
+    if (rematchCount < 2) {
+      this.hooks.setStatus(`Play again ${rematchCount}/2 — waiting…`);
     }
   }
 

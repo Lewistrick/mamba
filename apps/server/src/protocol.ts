@@ -21,6 +21,8 @@ export interface RoomPlayerInfo {
   displayName: string;
   index: number;
   ready: boolean;
+  /** True when this seat asked to rematch after a finished game. */
+  rematchWanted: boolean;
 }
 
 /** Public listing row. */
@@ -50,6 +52,7 @@ export type ClientMessage =
   | { type: "list_public" }
   | { type: "leave" }
   | { type: "set_ready"; ready: boolean }
+  | { type: "play_again" }
   | { type: "input"; dir: Direction };
 
 /** Server → client. */

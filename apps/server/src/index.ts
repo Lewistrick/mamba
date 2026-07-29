@@ -402,6 +402,23 @@ app.get(
               afterReadyChange(seated.room);
               break;
             }
+            case "play_again": {
+              const seated = rooms.findSeat(user.userId);
+              if (!seated) {
+                reply({ type: "error", message: "Not in a room" });
+                return;
+              }
+              const result = rooms.requestRematch(seated.room, seated.index);
+              if (result !== "waiting" && result !== "readying") {
+                reply({ type: "error", message: result });
+                return;
+              }
+              broadcastRoom(seated.room);
+              if (result === "readying") {
+                broadcastPregame(seated.room);
+              }
+              break;
+            }
             case "list_public": {
               reply({ type: "public_rooms", rooms: rooms.listPublic() });
               break;

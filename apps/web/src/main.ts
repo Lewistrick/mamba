@@ -1069,6 +1069,9 @@ function formatTopOrBottom(rank: number, total: number): string {
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
+  if (mpLobby.requestPlayAgain()) {
+    return;
+  }
   if (mpPlaying) {
     mpLobby.close();
     mpPlaying = false;
@@ -1342,6 +1345,9 @@ multiplayerBtnEl.addEventListener("click", () => {
 });
 
 playAgainEl.addEventListener("click", () => {
+  if (mpLobby.requestPlayAgain()) {
+    return;
+  }
   startGame();
 });
 

@@ -35,6 +35,8 @@ export interface Room {
   hostUserId: string;
   seats: (Seat | null)[];
   ready: [boolean, boolean];
+  /** Post-match rematch votes (cleared when returning to readying). */
+  rematch: [boolean, boolean];
   game: Game | null;
   tick: number;
   timer: ReturnType<typeof setInterval> | null;
@@ -91,6 +93,7 @@ export class RoomManager {
       hostUserId: host.user.userId,
       seats: [host, null],
       ready: [false, false],
+      rematch: [false, false],
       game: null,
       tick: 0,
       timer: null,
@@ -202,6 +205,7 @@ export class RoomManager {
         displayName: seat.user.displayName,
         index: i,
         ready: room.ready[i] ?? false,
+        rematchWanted: room.rematch[i] ?? false,
       });
     }
     return {
@@ -246,6 +250,68 @@ export class RoomManager {
     room.game = Game.versusHuman(room.sizeId, seed);
     room.status = "readying";
     room.ready = [false, false];
+    room.rematch = [false, false];
+    room.tick = 0;
+    room.scoresSaved = false;
+    room.eloApplied = false;
+    return null;
+  }
+
+  /**
+   * Records a rematch vote after a finished match; when both seats vote,
+   * resets the room into the Ready (pregame) phase.
+   *
+   * @param room - Finished room with two seats.
+   * @param playerIndex - Seat that clicked Play again.
+   * @returns `"readying"` when both voted, `"waiting"` when still one vote short, or an error string.
+   */
+  requestRematch(
+    room: Room,
+    playerIndex: number,
+  ): "readying" | "waiting" | string {
+    if (room.status !== "finished") {
+      return "Match is not finished";
+    }
+    if (playerIndex !== 0 && playerIndex !== 1) {
+      return "Invalid seat";
+    }
+    if (!room.seats[0] || !room.seats[1]) {
+      return "Opponent left the room";
+    }
+    if (!room.seats[playerIndex]) {
+      return "Not seated";
+    }
+    room.rematch[playerIndex] = true;
+    if (!room.rematch[0] || !room.rematch[1]) {
+      return "waiting";
+    }
+    const err = this.resetToPregame(room);
+    return err ?? "readying";
+  }
+
+  /**
+   * Rebuilds a fresh versus board and returns to the readying phase.
+   *
+   * @param room - Finished room with both seats filled.
+   * @returns Error message or null.
+   */
+  resetToPregame(room: Room): string | null {
+    if (room.status !== "finished") {
+      return "Match is not finished";
+    }
+    if (!room.seats[0] || !room.seats[1]) {
+      return "Need two players";
+    }
+    this.clearCountdown(room);
+    if (room.timer) {
+      clearInterval(room.timer);
+      room.timer = null;
+    }
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    room.game = Game.versusHuman(room.sizeId, seed);
+    room.status = "readying";
+    room.ready = [false, false];
+    room.rematch = [false, false];
     room.tick = 0;
     room.scoresSaved = false;
     room.eloApplied = false;
@@ -373,6 +439,7 @@ export class RoomManager {
       room.timer = null;
     }
     room.status = "finished";
+    room.rematch = [false, false];
     onGameOver(room, state);
   }
 
@@ -441,17 +508,34 @@ export class RoomManager {
         room.game = null;
         room.status = "waiting";
         room.ready = [false, false];
+        room.rematch = [false, false];
       }
 
       room.seats[idx] = null;
 
       const remaining = room.seats.filter(Boolean).length;
-      if (remaining === 0 || room.status === "finished") {
+      if (remaining === 0) {
         this.clearCountdown(room);
         if (room.timer) {
           clearInterval(room.timer);
         }
         this.rooms.delete(room.code);
+      } else if (room.status === "finished") {
+        // Opponent left after the match — survivor waits alone for a new joiner.
+        this.clearCountdown(room);
+        if (room.timer) {
+          clearInterval(room.timer);
+          room.timer = null;
+        }
+        room.game = null;
+        room.status = "waiting";
+        room.ready = [false, false];
+        room.rematch = [false, false];
+        if (room.seats[0] === null && room.seats[1]) {
+          room.seats[0] = room.seats[1];
+          room.seats[1] = null;
+          room.hostUserId = room.seats[0]!.user.userId;
+        }
       } else if (room.status === "waiting" && idx === 0) {
         // Host left while waiting — close room.
         this.rooms.delete(room.code);
@@ -461,6 +545,7 @@ export class RoomManager {
         room.seats[1] = null;
         room.hostUserId = room.seats[0]!.user.userId;
         room.ready = [false, false];
+        room.rematch = [false, false];
       }
     }
     return affected;
