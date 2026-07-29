@@ -1,6 +1,6 @@
 .git
 .github
-.cursor
+.claude
 .vscode
 **/node_modules
 **/dist

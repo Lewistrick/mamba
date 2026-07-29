@@ -15,7 +15,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - **Help** page (menu): remake story plus controls, scoring, and modes
 - Preferences in `localStorage`; guest play always works offline (online requires account)
 
-See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full-implementation-plan.md), [`.cursor/plans/phase-5-ai.md`](.cursor/plans/phase-5-ai.md), and [`.cursor/plans/phase-6-multiplayer.md`](.cursor/plans/phase-6-multiplayer.md).
+See [`.claude/plans/mamba-full-implementation-plan.md`](.claude/plans/mamba-full-implementation-plan.md), [`.claude/plans/phase-5-ai.md`](.claude/plans/phase-5-ai.md), and [`.claude/plans/phase-6-multiplayer.md`](.claude/plans/phase-6-multiplayer.md).
 
 ## Rules (Phase 1)
 
@@ -54,7 +54,7 @@ Pick **Solo** or **vs AI** (and a difficulty) in the menu before Play.
 
 Serves the Vite build with nginx under **`/mamba/`**, plus the **multiplayer** WS service (`mamba-ws`). Auth, Postgres, and `verify-score` stay on **cloud Supabase**.
 
-Step-by-step VPS + Supabase + local dev (every command names where / which file): [`.cursor/plans/deploy-vps-and-local.md`](.cursor/plans/deploy-vps-and-local.md).
+Step-by-step VPS + Supabase + local dev (every command names where / which file): [`.claude/plans/deploy-vps-and-local.md`](.claude/plans/deploy-vps-and-local.md).
 
 The containers join the shared Docker network `host-edge` (`mamba`, `mamba-ws`) so the host Caddy proxy can reach them. Public URL: [https://lewistrick.com/mamba/](https://lewistrick.com/mamba/).
 
@@ -97,7 +97,7 @@ Optional. Without config, everything works offline.
 
 Auth is **email + password** (magic link is optional). After sign-in, choose a **username once** before Play; that name is locked for global scores. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score`.
 
-**Optional later:** custom SMTP via Proton — see [`.cursor/plans/phase-proton-smtp.md`](.cursor/plans/phase-proton-smtp.md) (needs a custom domain address, not just a paid `@proton.me` account). Then re-enable Confirm email under **Authentication → Providers → Email** if you want verified addresses.
+**Optional later:** custom SMTP via Proton — see [`.claude/plans/phase-proton-smtp.md`](.claude/plans/phase-proton-smtp.md) (needs a custom domain address, not just a paid `@proton.me` account). Then re-enable Confirm email under **Authentication → Providers → Email** if you want verified addresses.
 
 ## Monorepo layout
 
