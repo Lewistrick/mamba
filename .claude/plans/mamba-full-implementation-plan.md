@@ -109,6 +109,7 @@ flowchart LR
 ## Phase 7 — Spectating
 
 - Auth-gated read-only WS clients; late join via full snapshot
+- See [phase-7-spectating.md](phase-7-spectating.md)
 
 ## Phase 8 — Divisions / tournaments (stretch)
 
