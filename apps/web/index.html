@@ -47,7 +47,7 @@
 
                 <section id="auth-panel" class="auth-panel" hidden>
                     <h2>Account</h2>
-                    <p id="auth-status" class="auth-status">Guest — local scores only</p>
+                    <p id="auth-status" class="auth-status">Guest (local scores only)</p>
                     <form id="auth-form" class="auth-form">
                         <label class="name-label">
                             Email
@@ -66,7 +66,7 @@
                         <p id="auth-confirm" class="auth-confirm" hidden></p>
                     </form>
                     <form id="username-form" class="auth-form" hidden>
-                        <p class="hint">Choose a username before you play (locked afterward).</p>
+                        <p class="hint">Choose a username before you can play.</p>
                         <label class="name-label">
                             Username
                             <input id="account-username" type="text" maxlength="12" autocomplete="nickname"
@@ -225,53 +225,51 @@
                 <section class="profile-card">
                     <h2>Why this remake</h2>
                     <p>
-                        I grew up a fan of Bert Uffen's 1989 MS-DOS Mamba and spent countless days competing over high
-                        scores with family and friends and manipulating high score files. The most fun about this
-                        particular snake game is that the snake molts, and leaves a wall in which new, more valuable
-                        pellets spawn.
+                        I grew up as a fan of Bert Uffen's 1989 MS-DOS Mamba, and spent countless days competing over
+                        highscores with family and friends (and maybe secretly manipulating high score files).
+                        The most fun about this particular snake game is that the snake molts, leaving a wall behind
+                        in which new, more valuable pellets can spawn.
                     </p>
                     <p>
-                        What I always wanted was a place where those scores could live together: a shared
-                        leaderboard, not just a list on one PC. So I remade the game for the web in the same spirit,
-                        but with local boards for guests, and global boards when you sign in.
+                        What I always wished for was a place where those scores could live together: a shared
+                        leaderboard, not just a list on one PC that could be manipulated.
+                        So I remade the game for the web in the same spirit, with local boards for guests,
+                        and global boards when you sign in.
                     </p>
                 </section>
                 <section class="profile-card">
                     <h2>Controls</h2>
                     <ul class="help-list">
                         <li><strong>Arrow keys</strong>: steer</li>
-                        <li><strong>Enter</strong> or <strong>Space</strong>: start / restart</li>
-                        <li><strong>P</strong>: pause</li>
+                        <li><strong>Enter</strong>: start / restart</li>
+                        <li><strong>P</strong>: pause (doesn't work in multiplayer)</li>
                         <li><strong>S</strong>: sound on/off</li>
                     </ul>
                 </section>
                 <section class="profile-card">
                     <h2>Scoring</h2>
                     <ul class="help-list">
-                        <li><strong>Blue</strong>: 1 point</li>
-                        <li><strong>Green</strong>: 10 points</li>
-                        <li><strong>Yellow</strong>: some high number</li>
+                        <li><strong>Blue</strong> (pellet): 1 point</li>
+                        <li><strong>Green</strong> (candy): 10 points</li>
+                        <li><strong>Lime</strong> (block): some high number</li>
                     </ul>
-                    <p>When you eat enough pellets, you molt and you enter level 2.
+                    <p>When you eat enough (random number between 12-24) pellets, you molt, and you enter level 2.
                         From then on, blue pellets are worth 2 points and green pellets 20.</p>
-                    <p>This goes on until level 10 (blue pellets 10 points, green pellets 100 points),
+                    <p>This goes on until level 10 (where blue pellets are 10 points, and green pellets 100 points),
                         after which the level increases, but the points per pellet stay the same.</p>
-                    <p>The score for the yellow pellet is the square root of the level times a random number between
+                    <p>The score for the lime pellet is the square root of the level times a random number between
                         20-50. You need to react fast (0.5 seconds) to find the quickest way there, but it's
                         theoretically always gettable (it uses the minimum Dijkstra distance).</p>
-                    <p>When you play against AI, your score is deducted with the AI's score. To encourage survival,
-                        every second, your score is increased with the level number. For fairness, the yellow pellets
-                        are always placed roughly equidistant from you and your opponent.</p>
+                    <p>When you play against AI, your score is deducted with the AI's score. Every second, your score
+                        is increased with the level number (to encourage survival). For fairness, the lime pellets
+                        are always placed roughly at the same distance to you and your opponent.</p>
                 </section>
                 <section class="profile-card">
                     <h2>Modes &amp; boards</h2>
                     <ul class="help-list">
-                        <li><strong>Solo</strong>: classic single mamba</li>
+                        <li><strong>Solo</strong>: Classic single mamba</li>
                         <li><strong>vs AI</strong>: Easy / Medium / Hard on a shared field</li>
                         <li><strong>Sizes</strong>: Small 11×20, Medium 22×40, Large 33×60</li>
-                        <li><strong>Scores</strong>: local (this browser) or global (signed-in, verified replays);
-                            filter by
-                            daily / weekly / all-time</li>
                     </ul>
                     <p>For the 'classic' game experience, select solo mode on medium size.</p>
                 </section>
