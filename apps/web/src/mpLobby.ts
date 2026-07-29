@@ -3,6 +3,7 @@
  */
 
 import type { Direction, FieldSizeId, GameState } from "@mamba/engine";
+import { versusNetScore } from "@mamba/engine";
 import { getSession } from "./supabase.ts";
 import {
   MpClient,
@@ -326,7 +327,7 @@ export class MpLobbyController {
         if (you && opp) {
           submitScore({
             name: msg.names[msg.youIndex] || "You",
-            score: you.score - opp.score,
+            score: versusNetScore(you, opp),
             level: you.level,
             sizeId: this.room?.sizeId ?? "medium",
             mode: "mp",

@@ -3,6 +3,7 @@
  */
 
 import type { Direction, GameState, Point } from "@mamba/engine";
+import { pelletScore, versusHudNetScore } from "@mamba/engine";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
 
 const COLORS = {
@@ -204,18 +205,23 @@ export class Renderer {
 
     // Packed from the right so left-to-right order matches the labels below.
     let cursor = cssW - 10;
-    if (versus && state) {
-      cursor = this.drawHudStat(cursor, cy, `Net : ${state.netScore}`);
+    if (versus && state?.players[0] && state.players[1]) {
+      const you = state.players[0];
+      const opp = state.players[1];
+      const youPellets = pelletScore(you);
+      const oppPellets = pelletScore(opp);
+      const hudNet = versusHudNetScore(you, opp);
+      cursor = this.drawHudStat(cursor, cy, `Net : ${hudNet}`);
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
       cursor -= 8;
       cursor = this.drawHudStat(
         cursor,
         cy,
-        `${opponentLabel} : ${state.players[1]?.score ?? 0}`,
+        `${opponentLabel} : ${oppPellets}`,
       );
       cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
+      cursor = this.drawHudStat(cursor, cy, `You : ${youPellets}`);
     } else {
       cursor = this.drawHudStat(cursor, cy, `Score : ${score}`);
     }

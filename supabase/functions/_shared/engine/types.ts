@@ -34,7 +34,7 @@ export interface SnakePlayerState {
   score: number;
   /** Points earned from surviving (+level each second). Versus / AI only. */
   survivalScore: number;
-  /** Bonus for beating the AI (`100 × level`). Versus only; else 0. */
+  /** Bonus for being the sole survivor (`100 × level`). Versus only; else 0. */
   winBonus: number;
   level: number;
   pelletsEatenThisLife: number;
@@ -85,7 +85,7 @@ export interface GameState {
   level: number;
   pelletsEatenThisLife: number;
   moltThreshold: number;
-  /** `player[0].score - player[1].score` when versus; else player 0 score. */
+  /** Versus: pellets_you − pellets_opp + your time + your win; solo: score. */
   netScore: number;
   status: GameStatus;
   tick: number;

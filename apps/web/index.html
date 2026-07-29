@@ -260,9 +260,11 @@
                     <p>The score for the lime pellet is the square root of the level times a random number between
                         20-50. You need to react fast (0.5 seconds) to find the quickest way there, but it's
                         theoretically always gettable (it uses the minimum Dijkstra distance).</p>
-                    <p>When you play against AI, your score is deducted with the AI's score. Every second, your score
-                        is increased with the level number (to encourage survival). For fairness, the lime pellets
-                        are always placed roughly at the same distance to you and your opponent.</p>
+                    <p>When you play against AI or online, the board score is
+                        your pellet points minus the opponent’s pellet points, plus your time bonus
+                        and win bonus (opponent time is not deducted). The top bar shows pellet scores,
+                        your time bonus, and net without the win bonus. Lime pellets spawn a bit closer
+                        to whoever just molted (about 5–10 path ticks nearer than the opponent).</p>
                 </section>
                 <section class="profile-card">
                     <h2>Modes &amp; boards</h2>

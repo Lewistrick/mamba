@@ -28,10 +28,10 @@ See [`.cursor/plans/mamba-full-implementation-plan.md`](.cursor/plans/mamba-full
 | Survival | vs AI / online: every second while alive, score `+level` (HUD: Time); each snake uses its own level |
 | Win bonus | vs AI / online: sole survivor gets `+100 × level`; head-on (both die) → no win bonus |
 | Molt | After `12–22` blue/green pellets this life → older body becomes wall, keep 5 segments, level +1 |
-| Yellow pellet | Spawns on molt (lime); vs AI / online: equidistant Dijkstra from both heads; after 5 ticks TTL = Dijkstra + 5 (farther head), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
+| Yellow pellet | Spawns on molt (lime); vs AI / online: ~5–10 Dijkstra ticks closer to the snake that molted; after 5 ticks TTL = Dijkstra + 5 (farther head), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); worth `⌊√level × random(20–50)⌋`; eat → spawn **two** pellets |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
 | Death | Hit border, self, red wall, or the other snake (vs AI / online) |
-| vs AI / online | Shared board; either death ends the run; winner = highest total score; saved board score = your score − opponent |
+| vs AI / online | Shared board; either death ends the run; winner = highest total score; saved board score = your pellets − opponent pellets + your time + your win |
 
 Score caps follow the Wikipedia description of the original: blue max **10**, green max **100**.
 

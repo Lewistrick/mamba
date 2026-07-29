@@ -48,7 +48,10 @@ function baseState(partial: Partial<GameState>): GameState {
 }
 
 describe("gameOverScoreLines", () => {
-  it("formats versus breakdown with aligned values", () => {
+  it("formats versus breakdown with pellet scores summing to net", () => {
+    // you total 235 = pellets 16 + time 19 + win 200
+    // opp total 29 = pellets 10 + time 19
+    // net = 16 - 10 + 19 + 200 = 225
     const lines = gameOverScoreLines(
       baseState({
         players: [
@@ -82,17 +85,60 @@ describe("gameOverScoreLines", () => {
         score: 235,
         survivalScore: 19,
         winBonus: 200,
-        netScore: 206,
+        netScore: 225,
       }),
     );
     expect(lines).toEqual([
-      "Your score  235",
-      "AI score    -29",
+      "Your score   16",
+      "AI score    -10",
       "Time bonus   19",
       "Win bonus   200",
       "--------------- +",
-      "Net score   206",
+      "Net score   225",
     ]);
+  });
+
+  it("matches pellet − AI pellet + time + win", () => {
+    // Pellets 2450, AI pellets 2241, time 611, win 800 → net 1620
+    const lines = gameOverScoreLines(
+      baseState({
+        players: [
+          {
+            body: [],
+            direction: "Right",
+            score: 2450 + 611 + 800,
+            survivalScore: 611,
+            winBonus: 800,
+            level: 8,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 12,
+            alive: true,
+            blueValue: 8,
+            greenValue: 80,
+          },
+          {
+            body: [],
+            direction: "Left",
+            score: 2241,
+            survivalScore: 0,
+            winBonus: 0,
+            level: 5,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 12,
+            alive: false,
+            blueValue: 5,
+            greenValue: 50,
+          },
+        ],
+        score: 2450 + 611 + 800,
+        survivalScore: 611,
+        winBonus: 800,
+        netScore: 1620,
+      }),
+    );
+    expect(lines[0]).toContain("2450");
+    expect(lines[1]).toContain("-2241");
+    expect(lines[5]).toContain("1620");
   });
 
   it("formats solo as a single score line", () => {

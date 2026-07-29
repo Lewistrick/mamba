@@ -4,6 +4,7 @@
 
 import { createRng, randomInt } from "./rng.ts";
 import { dijkstraDistance, dijkstraDistancesFrom } from "./pathfinding.ts";
+import { versusNetScore } from "./scoring.ts";
 import {
   MEDIUM_SIZE,
   START_LENGTH,
@@ -21,6 +22,8 @@ import {
   type SnakePlayerState,
   type YellowPellet,
 } from "./types.ts";
+
+export { pelletScore, versusHudNetScore, versusNetScore } from "./scoring.ts";
 
 const OPPOSITE: Record<Direction, Direction> = {
   Up: "Down",
@@ -175,6 +178,17 @@ export class Game {
   }
 
   /**
+   * Creates a human-vs-human game for a named field size (same rules as vs AI).
+   *
+   * @param sizeId - Small, medium, or large.
+   * @param seed - Optional seed; defaults to a time-based value.
+   * @returns A two-player game instance.
+   */
+  static versusHuman(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+  }
+
+  /**
    * Creates a human-vs-AI game for a named field size.
    *
    * @param sizeId - Small, medium, or large.
@@ -182,7 +196,7 @@ export class Game {
    * @returns A two-player game instance.
    */
   static versusAi(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
-    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+    return Game.versusHuman(sizeId, seed);
   }
 
   /**
@@ -313,7 +327,7 @@ export class Game {
   }
 
   /**
-   * Net score for leaderboards: P0 − P1 in versus, else P0 score.
+   * Net score for leaderboards: pellets_you − pellets_opp + your time + your win.
    *
    * @returns Net score.
    */
@@ -321,7 +335,7 @@ export class Game {
     if (this.players.length < 2) {
       return this.players[0].score;
     }
-    return this.players[0].score - this.players[1].score;
+    return versusNetScore(this.players[0], this.players[1]);
   }
 
   /**
@@ -503,6 +517,7 @@ export class Game {
     }
 
     if (this.status === "gameover") {
+      this.maybeAwardWinBonus();
       return this.getState();
     }
 
@@ -574,7 +589,7 @@ export class Game {
 
   /**
    * Marks a player dead and ends the run (either death ends versus/solo).
-   * Beating the AI awards `100 ×` the human's level.
+   * Win bonus is applied once after all deaths in the tick (see maybeAwardWinBonus).
    *
    * @param playerIndex - Who died.
    */
@@ -585,19 +600,41 @@ export class Game {
     }
     player.alive = false;
     this.events.push({ type: "die", player: playerIndex });
-
-    if (
-      this.playerCount === 2 &&
-      playerIndex === 1 &&
-      this.players[0].alive
-    ) {
-      const human = this.players[0];
-      const bonus = 100 * human.level;
-      human.score += bonus;
-      human.winBonus += bonus;
-    }
-
     this.status = "gameover";
+  }
+
+  /**
+   * Ends the run because a player disconnected / forfeited.
+   *
+   * @param playerIndex - Who left.
+   * @returns Final state (sole survivor gets win bonus).
+   */
+  forfeit(playerIndex: number): GameState {
+    this.events = [];
+    this.killPlayer(playerIndex);
+    this.maybeAwardWinBonus();
+    return this.getState();
+  }
+
+  /**
+   * Awards `100 × level` to the sole survivor in a 2-player game.
+   * Head-on (both dead) grants no win bonus.
+   */
+  private maybeAwardWinBonus(): void {
+    if (this.playerCount < 2) {
+      return;
+    }
+    const survivors = this.players.filter((p) => p.alive);
+    if (survivors.length !== 1) {
+      return;
+    }
+    const winner = survivors[0];
+    if (winner.winBonus > 0) {
+      return;
+    }
+    const bonus = 100 * winner.level;
+    winner.score += bonus;
+    winner.winBonus += bonus;
   }
 
   /**
@@ -781,20 +818,23 @@ export class Game {
     player.pelletsEatenThisLife = 0;
     player.moltThreshold = randomInt(this.rng, 12, 22);
     this.events.push({ type: "molt", player: playerIndex });
-    this.spawnYellow(player.level);
+    this.spawnYellow(player.level, playerIndex);
   }
 
   /**
    * Spawns a yellow bonus pellet if none is active.
    *
    * @param level - Level of the molting snake (for value).
+   * @param molterIndex - Who molted (versus: bias spawn toward this snake).
    */
-  private spawnYellow(level: number): void {
+  private spawnYellow(level: number, molterIndex = 0): void {
     if (this.yellowPellet !== null) {
       return;
     }
     const pos =
-      this.playerCount === 2 ? this.pickFairYellowCell() : this.pickEmptyCell();
+      this.playerCount === 2
+        ? this.pickBiasedYellowCell(molterIndex)
+        : this.pickEmptyCell();
     if (pos === null) {
       return;
     }
@@ -811,17 +851,17 @@ export class Game {
   }
 
   /**
-   * Picks an empty cell as fair as possible for both living snakes (vs AI).
+   * Picks an empty cell ~N Dijkstra ticks closer to the molting snake than the
+   * opponent (N random in 5–10 inclusive). Falls back to minimizing
+   * `| (dOpp − dMolter) − N |`, then {@link pickEmptyCell}.
    *
-   * Prefers cells with equal Dijkstra distance from both heads, then the
-   * smallest such distance. Falls back to minimizing `|d0 − d1|`, then
-   * {@link pickEmptyCell} if nothing is reachable by both.
-   *
-   * @returns Fair empty cell, or null if the field is full.
+   * @param molterIndex - Seat that just molted.
+   * @returns Biased empty cell, or null if the field is full.
    */
-  private pickFairYellowCell(): Point | null {
-    const living = this.players.filter((p) => p.alive);
-    if (living.length < 2) {
+  private pickBiasedYellowCell(molterIndex: number): Point | null {
+    const molter = this.players[molterIndex];
+    const other = this.players[1 - molterIndex];
+    if (!molter?.alive || !other?.alive) {
       return this.pickEmptyCell();
     }
 
@@ -835,21 +875,22 @@ export class Game {
       }
     }
 
-    const dist0 = dijkstraDistancesFrom(
+    const distMolter = dijkstraDistancesFrom(
       this.width,
       this.height,
-      living[0].body[0],
+      molter.body[0],
       blocked,
     );
-    const dist1 = dijkstraDistancesFrom(
+    const distOther = dijkstraDistancesFrom(
       this.width,
       this.height,
-      living[1].body[0],
+      other.body[0],
       blocked,
     );
 
-    let bestDiff = Number.POSITIVE_INFINITY;
-    let bestDist = Number.POSITIVE_INFINITY;
+    const bias = randomInt(this.rng, 5, 10);
+    let bestBiasError = Number.POSITIVE_INFINITY;
+    let bestMolterDist = Number.POSITIVE_INFINITY;
     const tied: Point[] = [];
 
     for (let y = 0; y < this.height; y += 1) {
@@ -862,19 +903,22 @@ export class Game {
         if (this.bluePellets.has(k) || this.greenPellets.has(k)) {
           continue;
         }
-        const d0 = dist0.get(k);
-        const d1 = dist1.get(k);
-        if (d0 === undefined || d1 === undefined || d0 === 0 || d1 === 0) {
+        const dM = distMolter.get(k);
+        const dO = distOther.get(k);
+        if (dM === undefined || dO === undefined || dM === 0 || dO === 0) {
           continue;
         }
-        const diff = Math.abs(d0 - d1);
-        const dist = diff === 0 ? d0 : Math.max(d0, d1);
-        if (diff < bestDiff || (diff === bestDiff && dist < bestDist)) {
-          bestDiff = diff;
-          bestDist = dist;
+        // Prefer cells closer to the molter by ~bias ticks: dO − dM ≈ bias.
+        const biasError = Math.abs(dO - dM - bias);
+        if (
+          biasError < bestBiasError ||
+          (biasError === bestBiasError && dM < bestMolterDist)
+        ) {
+          bestBiasError = biasError;
+          bestMolterDist = dM;
           tied.length = 0;
           tied.push(p);
-        } else if (diff === bestDiff && dist === bestDist) {
+        } else if (biasError === bestBiasError && dM === bestMolterDist) {
           tied.push(p);
         }
       }

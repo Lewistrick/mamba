@@ -227,7 +227,7 @@ describe("Game", () => {
     expect(state.bluePellets.length + state.greenPellets.length).toBe(2);
   });
 
-  it("spawns versus yellow equidistant from both heads", () => {
+  it("spawns versus yellow closer to the molting snake", () => {
     const game = Game.versusAi("small", 99);
     const g = game as unknown as {
       players: Array<{
@@ -237,12 +237,14 @@ describe("Game", () => {
         pelletsEatenThisLife: number;
         moltThreshold: number;
         inputQueue: unknown[];
+        alive: boolean;
       }>;
       bluePellets: Set<string>;
       greenPellets: Set<string>;
       walls: Set<string>;
       yellowPellet: unknown;
-      spawnYellow: (level: number) => void;
+      spawnYellow: (level: number, molterIndex: number) => void;
+      rng: () => number;
     };
     g.bluePellets = new Set();
     g.greenPellets = new Set();
@@ -258,6 +260,7 @@ describe("Game", () => {
     g.players[0].direction = "Right";
     g.players[0].inputQueue = [];
     g.players[0].moltThreshold = 99;
+    g.players[0].alive = true;
     g.players[1].body = [
       { x: 16, y: 5 },
       { x: 17, y: 5 },
@@ -268,8 +271,9 @@ describe("Game", () => {
     g.players[1].direction = "Left";
     g.players[1].inputQueue = [];
     g.players[1].moltThreshold = 99;
+    g.players[1].alive = true;
 
-    g.spawnYellow(2);
+    g.spawnYellow(2, 0);
     const yellow = game.getState().yellowPellet;
     expect(yellow).not.toBeNull();
     const blocked = new Set<string>();
@@ -294,7 +298,10 @@ describe("Game", () => {
     );
     expect(d0).not.toBeNull();
     expect(d1).not.toBeNull();
-    expect(d0).toBe(d1);
+    // Biased toward molter (P0): opponent path should be longer.
+    expect(d1!).toBeGreaterThan(d0!);
+    expect(d1! - d0!).toBeGreaterThanOrEqual(5);
+    expect(d1! - d0!).toBeLessThanOrEqual(10);
   });
 
   it("spawns two pellets when eating yellow", () => {
@@ -603,15 +610,24 @@ describe("Game", () => {
     expect(state.players[1].alive).toBe(false);
   });
 
-  it("reports net score as player minus AI", () => {
+  it("reports net as pellets_you − pellets_AI + time + win", () => {
     const game = Game.versusAi("small", 1);
     const g = game as unknown as {
-      players: Array<{ score: number }>;
+      players: Array<{
+        score: number;
+        survivalScore: number;
+        winBonus: number;
+      }>;
     };
     g.players[0].score = 80;
+    g.players[0].survivalScore = 20;
+    g.players[0].winBonus = 0;
     g.players[1].score = 30;
-    expect(game.netScore()).toBe(50);
-    expect(game.getState().netScore).toBe(50);
+    g.players[1].survivalScore = 10;
+    g.players[1].winBonus = 0;
+    // pellets 60 − 20 + time 20 + win 0 = 60
+    expect(game.netScore()).toBe(60);
+    expect(game.getState().netScore).toBe(60);
   });
 
   it("awards win bonus when the AI dies and the player survives", () => {

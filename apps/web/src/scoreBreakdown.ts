@@ -2,19 +2,19 @@
  * Game-over score breakdown lines for solo and versus overlays.
  */
 
-import type { GameState } from "@mamba/engine";
+import { pelletScore, type GameState } from "@mamba/engine";
 
 /**
  * Builds aligned game-over score lines.
  *
  * Versus (AI or multiplayer):
  * ```
- * Your score  ... 35
- * AI score    ... -29
- * Time bonus  ... 19
- * Win bonus   ... 200
+ * Your score  ... pellets only
+ * AI score    ... −opponent pellets only
+ * Time bonus  ... your survival
+ * Win bonus   ... your win
  * ------------------ +
- * Net score   ... 206
+ * Net score   ... pellets_you − pellets_AI + time + win
  * ```
  *
  * Solo: single score line (no time / win bonus).
@@ -29,14 +29,16 @@ export function gameOverScoreLines(
 ): string[] {
   if (state.players.length > 1) {
     const oppLabel = options?.opponentLabel ?? "AI";
-    const you = state.players[0].score;
-    const opp = state.players[1].score;
-    const time = state.players[0].survivalScore;
-    const win = state.players[0].winBonus;
+    const you = state.players[0];
+    const opp = state.players[1];
+    const time = you.survivalScore;
+    const win = you.winBonus;
+    const yourPellets = pelletScore(you);
+    const oppPellets = pelletScore(opp);
     const net = state.netScore;
-    const oppText = `-${opp}`;
+    const oppText = `-${oppPellets}`;
     const valueWidth = Math.max(
-      String(you).length,
+      String(yourPellets).length,
       oppText.length,
       String(time).length,
       String(win).length,
@@ -47,7 +49,7 @@ export function gameOverScoreLines(
       `${label.padEnd(labelWidth, " ")}  ${value.padStart(valueWidth, " ")}`;
     const rule = `${"-".repeat(labelWidth + 2 + valueWidth)} +`;
     return [
-      row("Your score", String(you)),
+      row("Your score", String(yourPellets)),
       row(`${oppLabel} score`, oppText),
       row("Time bonus", String(time)),
       row("Win bonus", String(win)),

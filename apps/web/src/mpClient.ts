@@ -3,6 +3,7 @@
  */
 
 import type { Direction, FieldSizeId, GameState } from "@mamba/engine";
+import { versusNetScore } from "@mamba/engine";
 
 /** Room visibility. */
 export type RoomVisibility = "public" | "private";
@@ -252,7 +253,7 @@ export function remapStateForYou(state: GameState, youIndex: number): GameState 
     survivalScore: you.survivalScore,
     winBonus: you.winBonus,
     level: you.level,
-    netScore: you.score - opp.score,
+    netScore: versusNetScore(you, opp),
   };
 }
 

@@ -5,6 +5,7 @@
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import type { Direction, FieldSizeId, GameState } from "@mamba/engine";
+import { versusNetScore } from "@mamba/engine";
 import { Hono } from "hono";
 import {
   authenticatePlayer,
@@ -161,11 +162,14 @@ async function handleGameOverAsync(room: Room, state: GameState): Promise<void> 
       if (!seat || !player) {
         continue;
       }
-      const opponentScore = state.players[1 - i]?.score ?? 0;
+      const opponent = state.players[1 - i];
+      if (!seat || !player || !opponent) {
+        continue;
+      }
       rows.push({
         userId: seat.user.userId,
         displayName: seat.user.displayName,
-        score: player.score - opponentScore,
+        score: versusNetScore(player, opponent),
         level: player.level,
         sizeId: room.sizeId,
       });

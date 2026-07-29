@@ -2,7 +2,7 @@
  * Public exports for the Mamba game engine.
  */
 
-export { Game, bluePelletValue, greenPelletValue } from "./game.ts";
+export { Game, bluePelletValue, greenPelletValue, pelletScore, versusHudNetScore, versusNetScore } from "./game.ts";
 export { AiBrain } from "./ai.ts";
 export {
   MAX_REPLAY_TICKS,
