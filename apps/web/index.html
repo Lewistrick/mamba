@@ -43,6 +43,7 @@
                 </fieldset>
 
                 <button type="button" id="btn-play" class="primary">Play</button>
+                <button type="button" id="btn-multiplayer" class="secondary">Multiplayer</button>
 
                 <section id="auth-panel" class="auth-panel" hidden>
                     <h2>Account</h2>
@@ -266,6 +267,48 @@
                 </section>
             </div>
         </div>
+
+        <div id="mp-page" class="help-page" hidden>
+            <header class="profile-header">
+                <button type="button" id="btn-mp-back" class="secondary">← Back</button>
+                <h1>Multiplayer</h1>
+            </header>
+            <p id="mp-status" class="hint">Sign in with a username to play online 1v1.</p>
+            <div class="help-content" id="mp-lobby">
+                <section class="profile-card">
+                    <h2>Create room</h2>
+                    <fieldset class="size-field" id="mp-size-field">
+                        <legend>Board size</legend>
+                        <label><input type="radio" name="mp-size" value="small" /> Small</label>
+                        <label><input type="radio" name="mp-size" value="medium" checked /> Medium</label>
+                        <label><input type="radio" name="mp-size" value="large" /> Large</label>
+                    </fieldset>
+                    <fieldset class="size-field">
+                        <legend>Visibility</legend>
+                        <label><input type="radio" name="mp-visibility" value="public" checked /> Public (listed)</label>
+                        <label><input type="radio" name="mp-visibility" value="private" /> Private (code only)</label>
+                    </fieldset>
+                    <button type="button" id="btn-mp-create" class="primary">Create room</button>
+                    <p id="mp-code" class="mp-code" hidden></p>
+                </section>
+                <section class="profile-card">
+                    <h2>Join with code</h2>
+                    <label class="name-label">
+                        Room code
+                        <input id="mp-join-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC123" />
+                    </label>
+                    <button type="button" id="btn-mp-join" class="secondary">Join</button>
+                </section>
+                <section class="profile-card">
+                    <h2>Public rooms</h2>
+                    <button type="button" id="btn-mp-refresh" class="text-btn">Refresh list</button>
+                    <ul id="mp-public-list" class="mp-public-list"></ul>
+                    <p id="mp-public-empty" class="hint">No public rooms waiting</p>
+                </section>
+            </div>
+            <p id="mp-match-hint" class="hint" hidden>Match in progress — arrows to steer (no pause)</p>
+        </div>
+
     </div>
     <script type="module" src="/src/main.ts"></script>
 </body>

@@ -9,8 +9,9 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @mamba/web",
+    "dev:server": "npm run dev -w @mamba/server",
     "build": "npm run sync:engine && npm run build -w @mamba/engine && npm run build -w @mamba/web",
-    "test": "npm run test -w @mamba/engine && npm run test -w @mamba/web",
+    "test": "npm run test -w @mamba/engine && npm run test -w @mamba/web && npm run test -w @mamba/server",
     "preview": "npm run preview -w @mamba/web",
     "sync:engine": "node scripts/sync-engine-to-supabase.mjs"
   }

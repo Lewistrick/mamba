@@ -1,0 +1,25 @@
+{
+  "name": "@mamba/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.3",
+    "@hono/node-ws": "^1.1.4",
+    "@mamba/engine": "*",
+    "@supabase/supabase-js": "^2.49.1",
+    "hono": "^4.7.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.4",
+    "typescript": "~6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

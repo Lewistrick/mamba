@@ -175,6 +175,17 @@ export class Game {
   }
 
   /**
+   * Creates a human-vs-human game for a named field size (same rules as vs AI).
+   *
+   * @param sizeId - Small, medium, or large.
+   * @param seed - Optional seed; defaults to a time-based value.
+   * @returns A two-player game instance.
+   */
+  static versusHuman(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+  }
+
+  /**
    * Creates a human-vs-AI game for a named field size.
    *
    * @param sizeId - Small, medium, or large.
@@ -182,7 +193,7 @@ export class Game {
    * @returns A two-player game instance.
    */
   static versusAi(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
-    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+    return Game.versusHuman(sizeId, seed);
   }
 
   /**
@@ -503,6 +514,7 @@ export class Game {
     }
 
     if (this.status === "gameover") {
+      this.maybeAwardWinBonus();
       return this.getState();
     }
 
@@ -574,7 +586,7 @@ export class Game {
 
   /**
    * Marks a player dead and ends the run (either death ends versus/solo).
-   * Beating the AI awards `100 ×` the human's level.
+   * Win bonus is applied once after all deaths in the tick (see maybeAwardWinBonus).
    *
    * @param playerIndex - Who died.
    */
@@ -585,19 +597,41 @@ export class Game {
     }
     player.alive = false;
     this.events.push({ type: "die", player: playerIndex });
-
-    if (
-      this.playerCount === 2 &&
-      playerIndex === 1 &&
-      this.players[0].alive
-    ) {
-      const human = this.players[0];
-      const bonus = 100 * human.level;
-      human.score += bonus;
-      human.winBonus += bonus;
-    }
-
     this.status = "gameover";
+  }
+
+  /**
+   * Ends the run because a player disconnected / forfeited.
+   *
+   * @param playerIndex - Who left.
+   * @returns Final state (sole survivor gets win bonus).
+   */
+  forfeit(playerIndex: number): GameState {
+    this.events = [];
+    this.killPlayer(playerIndex);
+    this.maybeAwardWinBonus();
+    return this.getState();
+  }
+
+  /**
+   * Awards `100 × level` to the sole survivor in a 2-player game.
+   * Head-on (both dead) grants no win bonus.
+   */
+  private maybeAwardWinBonus(): void {
+    if (this.playerCount < 2) {
+      return;
+    }
+    const survivors = this.players.filter((p) => p.alive);
+    if (survivors.length !== 1) {
+      return;
+    }
+    const winner = survivors[0];
+    if (winner.winBonus > 0) {
+      return;
+    }
+    const bonus = 100 * winner.level;
+    winner.score += bonus;
+    winner.winBonus += bonus;
   }
 
   /**

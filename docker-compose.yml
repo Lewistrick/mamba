@@ -1,13 +1,15 @@
 # Static Mamba client behind host-edge Caddy at /mamba/.
 # Auth / DB / verify-score stay on cloud Supabase.
+# Multiplayer WS: service `server` (proxy /mamba/ws → mamba-ws:8787).
 services:
   web:
     build:
       context: .
       args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_SUPABASE_URL: ${SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
         VITE_BASE_PATH: /mamba/
+        VITE_WS_URL: ${VITE_WS_URL:-wss://lewistrick.com/mamba/ws}
     ports:
       # Localhost-only debugging; public HTTPS comes from the host-level proxy.
       - "127.0.0.1:34364:80"
@@ -16,6 +18,24 @@ services:
       edge:
         aliases:
           - mamba
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      PORT: "8787"
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks:
+      default: {}
+      edge:
+        aliases:
+          - mamba-ws
     restart: unless-stopped
 
 networks:

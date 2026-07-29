@@ -136,11 +136,13 @@ export class Renderer {
    * @param state - Current engine state, or null before the first game.
    * @param overlay - Optional overlay mode.
    * @param budget - Stage size for live rescale.
+   * @param options - Display tweaks (e.g. opponent HUD label).
    */
   draw(
     state: GameState | null,
     overlay: "start" | "gameover" | "paused" | null = null,
     budget?: FitBudget,
+    options?: { opponentLabel?: string },
   ): void {
     const width = state?.width ?? 40;
     const height = state?.height ?? 22;
@@ -151,11 +153,12 @@ export class Renderer {
 
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
+    const opponentLabel = options?.opponentLabel ?? "AI";
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, cssW, cssH);
 
-    this.drawHud(state);
+    this.drawHud(state, opponentLabel);
 
     if (state === null) {
       this.drawEmptyField(width, height);
@@ -166,16 +169,19 @@ export class Renderer {
     this.drawFooter();
 
     if (overlay === "paused") {
-      this.drawOverlay("paused", state);
+      this.drawOverlay("paused", state, opponentLabel);
     } else if (overlay === "gameover") {
-      this.drawOverlay("gameover", state);
+      this.drawOverlay("gameover", state, opponentLabel);
     }
   }
 
   /**
    * Draws the top status bar (title, level, score / versus stats).
+   *
+   * @param state - Game state.
+   * @param opponentLabel - Label for player 1 scores.
    */
-  private drawHud(state: GameState | null): void {
+  private drawHud(state: GameState | null, opponentLabel = "AI"): void {
     const { ctx } = this;
     const { width: cssW } = this.logicalSize;
     ctx.fillStyle = COLORS.hudBar;
@@ -203,7 +209,11 @@ export class Renderer {
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
       cursor -= 8;
-      cursor = this.drawHudStat(cursor, cy, `AI : ${state.players[1]?.score ?? 0}`);
+      cursor = this.drawHudStat(
+        cursor,
+        cy,
+        `${opponentLabel} : ${state.players[1]?.score ?? 0}`,
+      );
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `You : ${score}`);
     } else {
@@ -526,7 +536,11 @@ export class Renderer {
    * @param kind - Overlay mode.
    * @param state - Engine state used for the score breakdown.
    */
-  private drawOverlay(kind: "gameover" | "paused", state: GameState | null): void {
+  private drawOverlay(
+    kind: "gameover" | "paused",
+    state: GameState | null,
+    opponentLabel = "AI",
+  ): void {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
@@ -547,7 +561,9 @@ export class Renderer {
       ctx.fillText("GAME OVER", cx, cy - 48);
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
-      const lines = state ? gameOverScoreLines(state) : ["Score  0"];
+      const lines = state
+        ? gameOverScoreLines(state, { opponentLabel })
+        : ["Score  0"];
       let y = cy - 8;
       for (const line of lines) {
         ctx.fillText(line, cx, y);

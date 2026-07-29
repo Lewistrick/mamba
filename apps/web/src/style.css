@@ -52,7 +52,8 @@ body {
 
 #game-shell[hidden],
 #profile-page[hidden],
-#help-page[hidden] {
+#help-page[hidden],
+#mp-page[hidden] {
   display: none !important;
 }
 
@@ -513,10 +514,23 @@ body {
   margin-top: 0.35rem;
 }
 
-.help-list code {
-  font-size: 0.85em;
-  color: var(--accent-blue);
+.mp-code {
+  margin: 0.5rem 0 0;
+  font-size: 1.1rem;
+  color: var(--accent-yellow);
+  letter-spacing: 0.12em;
+  font-weight: 700;
 }
+
+.mp-public-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 
 .profile-header {
   display: flex;

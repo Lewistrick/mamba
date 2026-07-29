@@ -99,11 +99,12 @@ flowchart LR
 - Requires a **custom domain address** on Proton (paid plan alone is not enough)
 - Dashboard-only setup; see [phase-proton-smtp.md](phase-proton-smtp.md)
 
-## Phase 6 — Online 1v1
+## Phase 6 — Online 1v1 (done)
 
 - Hono WS server owns ticks; clients send inputs only
-- Matchmaking / room codes; head-on → both die
-- Confirm email can stay on once Phase 5.5 SMTP is live
+- Room codes (6-char); public/private; public rooms listed; private not spectatable
+- Signed-in + username required; winner = highest score; time/win bonuses like vs AI (no win bonus on head-on)
+- See [phase-6-multiplayer.md](phase-6-multiplayer.md)
 
 ## Phase 7 — Spectating
 

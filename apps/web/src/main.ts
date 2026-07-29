@@ -1,5 +1,5 @@
 /**
- * Mamba Phase 5 — solo + AI opponent, auth, local + global leaderboards.
+ * Mamba Phase 6 — solo, AI, online 1v1, auth, local + global leaderboards.
  */
 
 import {
@@ -35,6 +35,7 @@ import {
 } from "./profileStats.ts";
 import { Renderer } from "./renderer.ts";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
+import { MpLobbyController, mpGameOverText } from "./mpLobby.ts";
 import {
   loadSettings,
   playModeKey,
@@ -70,7 +71,7 @@ const KEY_TO_DIR: Record<string, Direction> = {
   ArrowRight: "Right",
 };
 
-type Screen = "menu" | "playing" | "gameover" | "profile" | "help";
+type Screen = "menu" | "playing" | "gameover" | "profile" | "help" | "multiplayer";
 
 interface PendingScore {
   score: number;
@@ -85,6 +86,7 @@ interface PendingScore {
 const canvasEl = document.querySelector<HTMLCanvasElement>("#game");
 const stageEl = document.querySelector<HTMLElement>("#stage");
 const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
+const multiplayerBtn = document.querySelector<HTMLButtonElement>("#btn-multiplayer");
 const statusNode = document.querySelector<HTMLElement>("#status");
 const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
 const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
@@ -120,6 +122,7 @@ const gameShell = document.querySelector<HTMLElement>("#game-shell");
 const profilePage = document.querySelector<HTMLElement>("#profile-page");
 const helpPage = document.querySelector<HTMLElement>("#help-page");
 const helpBackBtn = document.querySelector<HTMLButtonElement>("#btn-help-back");
+const mpPage = document.querySelector<HTMLElement>("#mp-page");
 const profileBackBtn = document.querySelector<HTMLButtonElement>("#btn-profile-back");
 const profileUsernameForm = document.querySelector<HTMLFormElement>("#profile-username-form");
 const profileUsernameInput = document.querySelector<HTMLInputElement>("#profile-username");
@@ -141,6 +144,7 @@ if (
   !canvasEl ||
   !stageEl ||
   !playBtnEl ||
+  !multiplayerBtn ||
   !statusNode ||
   !lbPeriodSelect ||
   !lbScopeSelect ||
@@ -171,6 +175,7 @@ if (
   !profilePage ||
   !helpPage ||
   !helpBackBtn ||
+  !mpPage ||
   !profileBackBtn ||
   !profileUsernameForm ||
   !profileUsernameInput ||
@@ -192,6 +197,7 @@ if (
 const canvas = canvasEl;
 const stage = stageEl;
 const playBtn = playBtnEl;
+const multiplayerBtnEl = multiplayerBtn!;
 const statusEl = statusNode;
 const periodSelect = lbPeriodSelect;
 const scopeSelect = lbScopeSelect;
@@ -221,6 +227,7 @@ const gameShellEl = gameShell;
 const profilePageEl = profilePage;
 const helpPageEl = helpPage;
 const helpBackEl = helpBackBtn;
+const mpPageEl = mpPage!;
 const profileBackEl = profileBackBtn;
 const profileUsernameFormEl = profileUsernameForm;
 const profileUsernameEl = profileUsernameInput;
@@ -244,6 +251,7 @@ let game: Game | null = null;
 let state: GameState | null = null;
 let aiBrain: AiBrain | null = null;
 let screen: Screen = "menu";
+let mpPlaying = false;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -255,6 +263,47 @@ let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
 let profileStatSort: StatSort = { key: "size", dir: "asc" };
 let profileChartXMode: ChartXMode = "date";
+
+const mpLobby = new MpLobbyController(mpPageEl, {
+  setStatus,
+  hideOverlays: () => {
+    hideGameOverOverlay();
+  },
+  showGameShell,
+  onMatchState: (view) => {
+    mpPlaying = true;
+    state = view;
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = false;
+    playBtn.textContent = "Leave match";
+  },
+  onMatchOver: (view, youIndex, names, winnerIndex) => {
+    mpPlaying = false;
+    state = view;
+    screen = "gameover";
+    playBtn.textContent = "Play again";
+    const text = mpGameOverText(view, names, youIndex, winnerIndex);
+    goScoreEl.textContent = text;
+    overlayEl.hidden = false;
+    guestFormEl.hidden = true;
+    setGoSaveStatus("Saved to local scores (mode: mp)", "ok");
+    setStatus(
+      winnerIndex === youIndex
+        ? "You win"
+        : winnerIndex === null
+          ? "Draw"
+          : "You lose",
+    );
+    void refreshLeaderboard();
+    mpPageEl.hidden = false;
+    screen = "multiplayer";
+  },
+  onMatchPlaying: (playing) => {
+    mpPlaying = playing;
+  },
+});
 
 /**
  * True when keyboard focus is in a text field.
@@ -574,16 +623,41 @@ function setProfileMsg(
 }
 
 /**
- * Returns from the profile or help page to the game shell.
+ * Returns from the profile, help, or multiplayer lobby to the game shell.
  */
 function showGameShell(): void {
   profilePageEl.hidden = true;
   helpPageEl.hidden = true;
+  if (!mpPlaying) {
+    mpPageEl.hidden = true;
+  }
   gameShellEl.hidden = false;
+  if (mpPlaying) {
+    screen = "playing";
+    return;
+  }
   screen = game && state?.status === "gameover" ? "gameover" : "menu";
   if (screen === "menu") {
     paused = false;
   }
+}
+
+/**
+ * Opens the multiplayer lobby page.
+ */
+function openMultiplayerPage(): void {
+  if (needsUsername() || !signedInEmail) {
+    setStatus("Sign in and choose a username for multiplayer");
+    return;
+  }
+  hideGameOverOverlay();
+  paused = true;
+  screen = "multiplayer";
+  gameShellEl.hidden = true;
+  profilePageEl.hidden = true;
+  helpPageEl.hidden = true;
+  mpPageEl.hidden = false;
+  void mpLobby.open();
 }
 
 /**
@@ -923,12 +997,20 @@ function formatTopOrBottom(rank: number, total: number): string {
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
+  if (mpPlaying) {
+    mpLobby.close();
+    mpPlaying = false;
+    screen = "menu";
+    playBtn.textContent = "Play";
+    setStatus("Left multiplayer match");
+    return;
+  }
   if (needsUsername()) {
     setStatus("Choose a username before playing");
     accountUsernameEl.focus();
     return;
   }
-  if (screen === "profile" || screen === "help") {
+  if (screen === "profile" || screen === "help" || screen === "multiplayer") {
     showGameShell();
   }
   hideGameOverOverlay();
@@ -1009,7 +1091,7 @@ function onGameOver(final: GameState, run: Game): void {
  * Toggles pause while a run is in progress.
  */
 function togglePause(): void {
-  if (screen !== "playing") {
+  if (mpPlaying || screen !== "playing") {
     return;
   }
   paused = !paused;
@@ -1038,9 +1120,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (screen === "profile" || screen === "help") {
+  if (screen === "profile" || screen === "help" || screen === "multiplayer") {
     if (event.key === "Escape") {
       event.preventDefault();
+      if (screen === "multiplayer") {
+        mpLobby.close();
+      }
       showGameShell();
     }
     return;
@@ -1055,7 +1140,7 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   if (event.key === "p" || event.key === "P") {
-    if (event.repeat) {
+    if (event.repeat || mpPlaying) {
       return;
     }
     event.preventDefault();
@@ -1073,12 +1158,18 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   const dir = KEY_TO_DIR[event.key];
-  if (dir && game && screen === "playing" && !paused) {
+  if (dir && screen === "playing" && !paused) {
     event.preventDefault();
     if (event.repeat) {
       return;
     }
-    game.queueDirection(dir);
+    if (mpPlaying) {
+      mpLobby.sendInput(dir);
+      return;
+    }
+    if (game) {
+      game.queueDirection(dir);
+    }
   }
 }
 
@@ -1091,12 +1182,12 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
-  if (screen === "profile" || screen === "help") {
+  if (screen === "profile" || screen === "help" || screen === "multiplayer") {
     requestAnimationFrame(frame);
     return;
   }
 
-  if (screen === "playing" && game && !paused) {
+  if (screen === "playing" && game && !paused && !mpPlaying) {
     accumulator += dt;
     const step = 1 / TICKS_PER_SECOND;
     while (accumulator >= step) {
@@ -1164,12 +1255,18 @@ function frame(now: number): void {
       : screen === "gameover" && overlayEl.hidden
         ? "gameover"
         : null;
-  renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget());
+  renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget(), {
+    opponentLabel: aiBrain ? "AI" : "Opp",
+  });
   requestAnimationFrame(frame);
 }
 
 playBtn.addEventListener("click", () => {
   startGame();
+});
+
+multiplayerBtnEl.addEventListener("click", () => {
+  openMultiplayerPage();
 });
 
 playAgainEl.addEventListener("click", () => {
