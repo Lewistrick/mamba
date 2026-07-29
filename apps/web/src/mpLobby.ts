@@ -16,6 +16,16 @@ import {
 import { submitScore } from "./leaderboard.ts";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
 
+/**
+ * Hides the multiplayer lobby after a match ends so GAME OVER can show alone
+ * on the game shell (avoids stacking lobby + overlay side by side).
+ *
+ * @param mpPage - `#mp-page` root element.
+ */
+export function hideLobbyForMatchOver(mpPage: HTMLElement): void {
+  mpPage.hidden = true;
+}
+
 /** Callbacks into the main shell. */
 export interface MpUiHooks {
   setStatus: (text: string) => void;
@@ -314,6 +324,9 @@ export class MpLobbyController {
         this.pregameShown = false;
         this.clearCountdownUi();
         this.hooks.hideReadyOverlay();
+        this.setMatchUi(false);
+        // Keep lobby closed while GAME OVER shows on the game shell.
+        hideLobbyForMatchOver(this.root);
         this.hooks.onMatchOver(
           view,
           msg.youIndex,
@@ -321,7 +334,6 @@ export class MpLobbyController {
           msg.winnerIndex,
           msg.elo ?? null,
         );
-        this.setMatchUi(false);
         const you = msg.state.players[msg.youIndex];
         const opp = msg.state.players[1 - msg.youIndex];
         if (you && opp) {

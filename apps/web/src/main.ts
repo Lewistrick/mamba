@@ -35,7 +35,7 @@ import {
 } from "./profileStats.ts";
 import { Renderer } from "./renderer.ts";
 import { gameOverScoreLines } from "./scoreBreakdown.ts";
-import { MpLobbyController, mpGameOverText } from "./mpLobby.ts";
+import { MpLobbyController, hideLobbyForMatchOver, mpGameOverText } from "./mpLobby.ts";
 import {
   loadSettings,
   playModeKey,
@@ -326,6 +326,9 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     state = view;
     screen = "gameover";
     playBtn.textContent = "Play again";
+    // Stay on the game shell with the overlay — do not reveal #mp-page
+    // beside it (that stacked the lobby next to GAME OVER).
+    hideLobbyForMatchOver(mpPageEl);
     const text = mpGameOverText(
       view,
       names,
@@ -348,8 +351,6 @@ const mpLobby = new MpLobbyController(mpPageEl, {
       profile = { ...profile, elo: elo.you.after };
     }
     void refreshLeaderboard();
-    mpPageEl.hidden = false;
-    screen = "multiplayer";
   },
   onMatchPlaying: (playing) => {
     mpPlaying = playing;
