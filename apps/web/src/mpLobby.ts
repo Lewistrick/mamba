@@ -41,6 +41,7 @@ export class MpLobbyController {
   private client: MpClient | null = null;
   private unsub: (() => void) | null = null;
   private room: RoomSnapshot | null = null;
+  private openPromise: Promise<void> | null = null;
 
   /**
    * @param root - #mp-page element.
@@ -57,7 +58,7 @@ export class MpLobbyController {
       void this.joinRoom();
     });
     this.root.querySelector("#btn-mp-refresh")?.addEventListener("click", () => {
-      this.client?.listPublic();
+      void this.ensureConnected().then(() => this.client?.listPublic());
     });
     this.root.querySelector("#btn-mp-back")?.addEventListener("click", () => {
       this.close();
@@ -77,6 +78,36 @@ export class MpLobbyController {
    */
   async open(): Promise<void> {
     this.root.hidden = false;
+    try {
+      await this.ensureConnected();
+    } catch {
+      // Status text already set in connectFresh / create handlers.
+    }
+  }
+
+  /**
+   * Connects and waits for server auth_ok (shared across concurrent callers).
+   */
+  private async ensureConnected(): Promise<void> {
+    if (this.client?.connected) {
+      return;
+    }
+    if (this.openPromise) {
+      await this.openPromise;
+      return;
+    }
+    this.openPromise = this.connectFresh();
+    try {
+      await this.openPromise;
+    } finally {
+      this.openPromise = null;
+    }
+  }
+
+  /**
+   * Builds a new socket and authenticates.
+   */
+  private async connectFresh(): Promise<void> {
     const status = this.root.querySelector<HTMLElement>("#mp-status");
     const url = mpWsUrl();
     if (!url) {
@@ -102,9 +133,11 @@ export class MpLobbyController {
       this.unsub = this.client.onMessage((msg) => this.onMessage(msg));
       await this.client.connect(session.access_token);
     } catch (err) {
+      this.client = null;
       if (status) {
         status.textContent = err instanceof Error ? err.message : "Connection failed";
       }
+      throw err;
     }
   }
 
@@ -112,6 +145,7 @@ export class MpLobbyController {
    * Leaves room and closes the socket.
    */
   close(): void {
+    this.openPromise = null;
     this.client?.leave();
     this.client?.close();
     this.client = null;
@@ -159,19 +193,39 @@ export class MpLobbyController {
   }
 
   private async createRoom(): Promise<void> {
-    if (!this.client?.connected) {
-      await this.open();
+    const status = this.root.querySelector<HTMLElement>("#mp-status");
+    try {
+      await this.ensureConnected();
+      if (!this.client?.connected) {
+        return;
+      }
+      this.client.createRoom(this.selectedSize(), this.selectedVisibility());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not create room";
+      if (status) {
+        status.textContent = message;
+      }
+      this.hooks.setStatus(message);
     }
-    this.client?.createRoom(this.selectedSize(), this.selectedVisibility());
   }
 
   private async joinRoom(): Promise<void> {
-    if (!this.client?.connected) {
-      await this.open();
+    const status = this.root.querySelector<HTMLElement>("#mp-status");
+    try {
+      await this.ensureConnected();
+      if (!this.client?.connected) {
+        return;
+      }
+      const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
+      const code = input?.value.trim() ?? "";
+      this.client.joinRoom(code);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not join room";
+      if (status) {
+        status.textContent = message;
+      }
+      this.hooks.setStatus(message);
     }
-    const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
-    const code = input?.value.trim() ?? "";
-    this.client?.joinRoom(code);
   }
 
   private onMessage(

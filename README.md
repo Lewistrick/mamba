@@ -54,6 +54,8 @@ Pick **Solo** or **vs AI** (and a difficulty) in the menu before Play.
 
 Serves the Vite build with nginx under **`/mamba/`**, plus the **multiplayer** WS service (`mamba-ws`). Auth, Postgres, and `verify-score` stay on **cloud Supabase**.
 
+Step-by-step VPS + Supabase + local dev (every command names where / which file): [`.cursor/plans/deploy-vps-and-local.md`](.cursor/plans/deploy-vps-and-local.md).
+
 The containers join the shared Docker network `host-edge` (`mamba`, `mamba-ws`) so the host Caddy proxy can reach them. Public URL: [https://lewistrick.com/mamba/](https://lewistrick.com/mamba/).
 
 ```bash

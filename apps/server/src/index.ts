@@ -15,8 +15,11 @@ import {
   type MpUser,
 } from "./auth.ts";
 import { updateMatchElo, type EloMatchResult } from "./elo.ts";
+import { loadDotEnv } from "./loadEnv.ts";
 import type { ClientMessage, RoomVisibility, ServerMessage } from "./protocol.ts";
 import { RoomManager, type Room, type Seat } from "./rooms.ts";
+
+loadDotEnv();
 
 const PORT = Number(process.env.PORT ?? 8787);
 const supabase = createSupabaseAdmin();
@@ -307,5 +310,10 @@ app.get(
 
 const server = serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`Mamba MP server on :${PORT} (ws path /ws)`);
+  if (!supabase) {
+    console.warn(
+      "Supabase client not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or ANON) in apps/server/.env for local `npm run dev:server`",
+    );
+  }
 });
 injectWebSocket(server);

@@ -658,8 +658,26 @@ function showGameShell(): void {
  * Opens the multiplayer lobby page.
  */
 function openMultiplayerPage(): void {
-  if (needsUsername() || !signedInEmail) {
-    setStatus("Sign in and choose a username for multiplayer");
+  if (!supabaseConfigured) {
+    setStatus(
+      "Multiplayer needs Supabase — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in apps/web/.env.local, then restart Vite",
+    );
+    return;
+  }
+  if (!signedInEmail) {
+    setStatus("Sign in under Account (below Multiplayer), then try again");
+    authFormEl.hidden = false;
+    authEl.hidden = false;
+    authEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    authEmailEl.focus();
+    return;
+  }
+  if (needsUsername()) {
+    setStatus("Choose a username under Account, then try again");
+    usernameFormEl.hidden = false;
+    authEl.hidden = false;
+    authEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    accountUsernameEl.focus();
     return;
   }
   hideGameOverOverlay();

@@ -59,6 +59,7 @@ type Handler = (msg: MpServerMessage) => void;
 export class MpClient {
   private ws: WebSocket | null = null;
   private readonly handlers = new Set<Handler>();
+  private authed = false;
 
   /**
    * @param url - WebSocket URL (e.g. ws://localhost:8787/ws).
@@ -79,14 +80,14 @@ export class MpClient {
   }
 
   /**
-   * True when the socket is open.
+   * True when the socket is open and the server accepted auth.
    */
   get connected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.authed && this.ws?.readyState === WebSocket.OPEN;
   }
 
   /**
-   * Opens the socket and authenticates.
+   * Opens the socket and waits until the server confirms auth.
    *
    * @param accessToken - Supabase JWT.
    */
@@ -95,16 +96,40 @@ export class MpClient {
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
+      let settled = false;
+
+      const fail = (message: string): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.authed = false;
+        reject(new Error(message));
+      };
+
+      const succeed = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.authed = true;
+        resolve();
+      };
+
       ws.addEventListener("open", () => {
         this.send({ type: "auth", accessToken });
-        resolve();
       });
       ws.addEventListener("error", () => {
-        reject(new Error("Could not connect to multiplayer server"));
+        fail("Could not connect to multiplayer server");
       });
       ws.addEventListener("message", (event) => {
         try {
           const msg = JSON.parse(String(event.data)) as MpServerMessage;
+          if (msg.type === "auth_ok") {
+            succeed();
+          } else if (msg.type === "error" && !this.authed && !settled) {
+            fail(msg.message);
+          }
           for (const h of this.handlers) {
             h(msg);
           }
@@ -114,6 +139,8 @@ export class MpClient {
       });
       ws.addEventListener("close", () => {
         this.ws = null;
+        this.authed = false;
+        fail("Multiplayer connection closed");
       });
     });
   }
@@ -122,6 +149,7 @@ export class MpClient {
    * Closes the connection.
    */
   close(): void {
+    this.authed = false;
     this.ws?.close();
     this.ws = null;
   }

@@ -14,13 +14,19 @@ export interface MpUser {
 /**
  * Creates a Supabase client for the game server.
  *
+ * Loads credentials from process env (use `tsx --env-file=.env` locally).
+ *
  * @returns Client or null if env is missing.
  */
 export function createSupabaseAdmin(): SupabaseClient | null {
-  const url = process.env.SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY
+  )?.trim();
   if (!url || !key) {
+    return null;
+  }
+  if (/YOUR_PROJECT|YOUR_ANON_KEY|YOUR_SERVICE_ROLE_KEY|placeholder/i.test(`${url}${key}`)) {
     return null;
   }
   return createClient(url, key);
