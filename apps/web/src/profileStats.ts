@@ -167,16 +167,50 @@ export function rollingAverage(values: number[], window: number): number[] {
   return out;
 }
 
+/** How the chart maps games onto the X axis. */
+export type ChartXMode = "date" | "game";
+
+/**
+ * Computes plot-relative X positions (0..plotW) for each score.
+ *
+ * @param times - Chronological timestamps (ms), one per game.
+ * @param mode - Date-proportional or equal per game.
+ * @param plotW - Plot width in CSS pixels.
+ * @returns X offsets from the left of the plot area.
+ */
+export function scoreXPositions(
+  times: number[],
+  mode: ChartXMode,
+  plotW: number,
+): number[] {
+  const n = times.length;
+  if (n === 0) {
+    return [];
+  }
+  if (n === 1) {
+    return [plotW / 2];
+  }
+  if (mode === "game") {
+    return times.map((_, i) => (i / (n - 1)) * plotW);
+  }
+  const t0 = times[0];
+  const tSpan = Math.max(1, times[n - 1] - t0);
+  return times.map((t) => ((t - t0) / tSpan) * plotW);
+}
+
 /**
  * Draws score dots and a dashed 10-game rolling average on a canvas.
  *
  * @param canvas - Target canvas (CSS size used for drawing).
  * @param scores - Chronological scores for one size/mode.
+ * @param options - Drawing options (`xMode` defaults to date).
  */
 export function drawScoreHistoryChart(
   canvas: HTMLCanvasElement,
   scores: MyScoreRow[],
+  options?: { xMode?: ChartXMode },
 ): void {
+  const xMode: ChartXMode = options?.xMode ?? "date";
   const dpr = window.devicePixelRatio || 1;
   const cssW = Math.max(320, canvas.clientWidth || 640);
   const cssH = Math.max(220, canvas.clientHeight || 280);
@@ -207,17 +241,12 @@ export function drawScoreHistoryChart(
   yMin -= yPad;
   yMax += yPad;
 
-  const t0 = scores[0].createdAt;
-  const t1 = scores[scores.length - 1].createdAt;
-  const tSpan = Math.max(1, t1 - t0);
-
-  const xAt = (i: number): number => {
-    if (scores.length === 1) {
-      return pad.left + plotW / 2;
-    }
-    const t = scores[i].createdAt;
-    return pad.left + ((t - t0) / tSpan) * plotW;
-  };
+  const xs = scoreXPositions(
+    scores.map((s) => s.createdAt),
+    xMode,
+    plotW,
+  );
+  const xAt = (i: number): number => pad.left + xs[i];
   const yAt = (v: number): number =>
     pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
@@ -247,7 +276,7 @@ export function drawScoreHistoryChart(
     ctx.fillText(String(Math.round(v)), pad.left - 6, y);
   }
 
-  // X date labels (first / mid / last)
+  // X labels (first / mid / last)
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   const labelIdx = [0, Math.floor((scores.length - 1) / 2), scores.length - 1];
@@ -257,8 +286,13 @@ export function drawScoreHistoryChart(
       continue;
     }
     seen.add(i);
-    const d = new Date(scores[i].createdAt);
-    const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    let label: string;
+    if (xMode === "game") {
+      label = `#${i + 1}`;
+    } else {
+      const d = new Date(scores[i].createdAt);
+      label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    }
     ctx.fillText(label, xAt(i), pad.top + plotH + 8);
   }
 

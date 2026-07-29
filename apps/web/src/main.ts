@@ -28,6 +28,7 @@ import {
   formatModeLabel,
   formatSizeLabel,
   sortStatRows,
+  type ChartXMode,
   type StatRow,
   type StatSort,
   type StatSortKey,
@@ -253,6 +254,7 @@ let profile: Profile | null = null;
 let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
 let profileStatSort: StatSort = { key: "size", dir: "asc" };
+let profileChartXMode: ChartXMode = "date";
 
 /**
  * True when keyboard focus is in a text field.
@@ -709,6 +711,27 @@ function setProfileStatSort(key: StatSortKey): void {
 }
 
 /**
+ * Reads the selected chart X-axis mode from the radio group.
+ *
+ * @returns Active mode.
+ */
+function selectedChartXMode(): ChartXMode {
+  const checked = document.querySelector<HTMLInputElement>(
+    'input[name="chart-x"]:checked',
+  );
+  return checked?.value === "game" ? "game" : "date";
+}
+
+/**
+ * Syncs radio buttons to the in-memory chart X mode.
+ */
+function syncChartXModeInputs(): void {
+  for (const input of document.querySelectorAll<HTMLInputElement>('input[name="chart-x"]')) {
+    input.checked = input.value === profileChartXMode;
+  }
+}
+
+/**
  * Shows the score history chart for one size/mode row.
  *
  * @param row - Selected stats row.
@@ -716,7 +739,25 @@ function setProfileStatSort(key: StatSortKey): void {
 function showProfileChart(row: StatRow): void {
   profileChartPanelEl.hidden = false;
   profileChartTitleEl.textContent = `${row.label} — scores over time`;
-  drawScoreHistoryChart(profileChartEl, row.scores);
+  syncChartXModeInputs();
+  drawScoreHistoryChart(profileChartEl, row.scores, { xMode: profileChartXMode });
+}
+
+/**
+ * Redraws the chart for the currently selected stats row.
+ */
+function redrawSelectedProfileChart(): void {
+  if (!selectedStatKey) {
+    return;
+  }
+  const selected = profileStatRows.find(
+    (r) => `${r.sizeId}|${r.mode}` === selectedStatKey,
+  );
+  if (selected) {
+    drawScoreHistoryChart(profileChartEl, selected.scores, {
+      xMode: profileChartXMode,
+    });
+  }
 }
 
 /**
@@ -1325,13 +1366,15 @@ window.addEventListener("resize", () => {
   if (screen !== "profile" || !selectedStatKey) {
     return;
   }
-  const selected = profileStatRows.find(
-    (r) => `${r.sizeId}|${r.mode}` === selectedStatKey,
-  );
-  if (selected) {
-    drawScoreHistoryChart(profileChartEl, selected.scores);
-  }
+  redrawSelectedProfileChart();
 });
+
+for (const input of document.querySelectorAll<HTMLInputElement>('input[name="chart-x"]')) {
+  input.addEventListener("change", () => {
+    profileChartXMode = selectedChartXMode();
+    redrawSelectedProfileChart();
+  });
+}
 
 for (const input of sizeInputs) {
   input.addEventListener("change", () => {

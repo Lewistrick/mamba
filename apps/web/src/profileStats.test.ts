@@ -3,12 +3,36 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildStatRows, rollingAverage, sortStatRows, type StatRow } from "./profileStats.ts";
+import {
+  buildStatRows,
+  rollingAverage,
+  scoreXPositions,
+  sortStatRows,
+  type StatRow,
+} from "./profileStats.ts";
 import type { MyScoreRow } from "./supabase.ts";
 
 describe("rollingAverage", () => {
   it("computes a trailing window average", () => {
     expect(rollingAverage([10, 20, 30], 2)).toEqual([10, 15, 25]);
+  });
+});
+
+describe("scoreXPositions", () => {
+  const times = [0, 10, 100];
+  const plotW = 100;
+
+  it("spaces games evenly in game mode", () => {
+    expect(scoreXPositions(times, "game", plotW)).toEqual([0, 50, 100]);
+  });
+
+  it("places by date proportionally in date mode", () => {
+    expect(scoreXPositions(times, "date", plotW)).toEqual([0, 10, 100]);
+  });
+
+  it("centers a single point", () => {
+    expect(scoreXPositions([42], "game", plotW)).toEqual([50]);
+    expect(scoreXPositions([42], "date", plotW)).toEqual([50]);
   });
 });
 

@@ -185,7 +185,22 @@
                     </table>
                     <div id="profile-chart-panel" class="profile-chart-panel" hidden>
                         <h3 id="profile-chart-title"></h3>
-                        <canvas id="profile-chart" width="640" height="280" aria-label="Score history"></canvas>
+                        <fieldset class="chart-x-mode" aria-label="X axis">
+                            <legend>X axis</legend>
+                            <label
+                                ><input type="radio" name="chart-x" value="date" checked /> By
+                                date</label
+                            >
+                            <label
+                                ><input type="radio" name="chart-x" value="game" /> By game</label
+                            >
+                        </fieldset>
+                        <canvas
+                            id="profile-chart"
+                            width="640"
+                            height="280"
+                            aria-label="Score history"
+                        ></canvas>
                     </div>
                 </section>
             </div>
