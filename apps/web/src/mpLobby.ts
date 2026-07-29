@@ -26,6 +26,10 @@ export interface MpUiHooks {
     youIndex: number,
     names: [string, string],
     winnerIndex: number | null,
+    elo: {
+      you: { before: number; after: number; delta: number };
+      opponent: { before: number; after: number; delta: number };
+    } | null,
   ) => void;
   onMatchPlaying: (playing: boolean) => void;
 }
@@ -202,7 +206,13 @@ export class MpLobbyController {
       }
       case "game_over": {
         const view = remapStateForYou(msg.state, msg.youIndex);
-        this.hooks.onMatchOver(view, msg.youIndex, msg.names, msg.winnerIndex);
+        this.hooks.onMatchOver(
+          view,
+          msg.youIndex,
+          msg.names,
+          msg.winnerIndex,
+          msg.elo ?? null,
+        );
         this.setMatchUi(false);
         // Local leaderboard net for this player
         const you = msg.state.players[msg.youIndex];
@@ -282,12 +292,13 @@ export class MpLobbyController {
 }
 
 /**
- * Formats an MP game-over summary including winner.
+ * Formats an MP game-over summary including winner and Elo delta.
  *
  * @param state - Remapped local view state.
  * @param names - Seat names.
  * @param youIndex - Local seat.
  * @param winnerIndex - Absolute winner seat or null.
+ * @param elo - Optional Elo change for the local player.
  * @returns Overlay text.
  */
 export function mpGameOverText(
@@ -295,6 +306,7 @@ export function mpGameOverText(
   names: [string, string],
   youIndex: number,
   winnerIndex: number | null,
+  elo: { before: number; after: number; delta: number } | null = null,
 ): string {
   const lines = gameOverScoreLines(state, { opponentLabel: "Opp" });
   let result: string;
@@ -305,5 +317,9 @@ export function mpGameOverText(
   } else {
     result = `${names[winnerIndex] || "Opponent"} wins`;
   }
-  return `${result}\n${lines.join("\n")}`;
+  const eloLine =
+    elo == null
+      ? null
+      : `Elo ${elo.before} → ${elo.after} (${elo.delta >= 0 ? "+" : ""}${elo.delta})`;
+  return [result, ...lines, eloLine].filter(Boolean).join("\n");
 }

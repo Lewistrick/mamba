@@ -155,6 +155,8 @@ export interface Profile {
   id: string;
   displayName: string;
   usernameSet: boolean;
+  /** Online 1v1 Elo (defaults to 1000). */
+  elo: number;
 }
 
 /**
@@ -172,11 +174,11 @@ export async function fetchProfile(): Promise<Profile | null> {
   }
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, display_name, username_set")
+    .select("id, display_name, username_set, elo")
     .eq("id", user.id)
     .maybeSingle();
   if (error || !data) {
-    // Older DBs without username_set still return display_name.
+    // Older DBs without username_set / elo still return display_name.
     const fallback = await supabase
       .from("profiles")
       .select("id, display_name")
@@ -190,12 +192,15 @@ export async function fetchProfile(): Promise<Profile | null> {
       id: fallback.data.id as string,
       displayName: name || "AAA",
       usernameSet: Boolean(name && name !== "AAA"),
+      elo: 1000,
     };
   }
+  const eloRaw = Number((data as { elo?: unknown }).elo);
   return {
     id: data.id as string,
     displayName: String(data.display_name ?? "AAA"),
     usernameSet: Boolean(data.username_set),
+    elo: Number.isFinite(eloRaw) ? eloRaw : 1000,
   };
 }
 

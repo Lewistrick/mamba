@@ -9,9 +9,12 @@ import { Hono } from "hono";
 import {
   authenticatePlayer,
   createSupabaseAdmin,
+  fetchElos,
   insertMpScores,
+  persistElos,
   type MpUser,
 } from "./auth.ts";
+import { updateMatchElo, type EloMatchResult } from "./elo.ts";
 import type { ClientMessage, RoomVisibility, ServerMessage } from "./protocol.ts";
 import { RoomManager, type Room, type Seat } from "./rooms.ts";
 
@@ -73,25 +76,75 @@ function broadcastState(room: Room, state: GameState): void {
 }
 
 /**
- * Handles game over: notify clients and insert global scores once.
+ * Handles game over: Elo update, notify clients, insert global scores once.
  *
  * @param room - Finished room.
  * @param state - Final state.
  */
 function handleGameOver(room: Room, state: GameState): void {
+  void handleGameOverAsync(room, state);
+}
+
+/**
+ * Async game-over side effects (Elo + scores + notify).
+ *
+ * @param room - Finished room.
+ * @param state - Final state.
+ */
+async function handleGameOverAsync(room: Room, state: GameState): Promise<void> {
   const names = rooms.names(room);
   const winnerIndex = RoomManager.winnerIndex(state);
-  for (let i = 0; i < room.seats.length; i += 1) {
-    const seat = room.seats[i];
+  // Capture before any await — leave() may clear seats after finishMatch returns.
+  const seats = [...room.seats] as (Seat | null)[];
+  let eloResult: EloMatchResult | null = null;
+
+  const seat0 = seats[0];
+  const seat1 = seats[1];
+  if (!room.eloApplied && supabase && seat0 && seat1) {
+    room.eloApplied = true;
+    const [ratingA, ratingB] = await fetchElos(
+      supabase,
+      seat0.user.userId,
+      seat1.user.userId,
+    );
+    eloResult = updateMatchElo(ratingA, ratingB, winnerIndex);
+    await persistElos(
+      supabase,
+      seat0.user.userId,
+      seat1.user.userId,
+      eloResult.a,
+      eloResult.b,
+    );
+  }
+
+  for (let i = 0; i < seats.length; i += 1) {
+    const seat = seats[i];
     if (!seat) {
       continue;
     }
+    const you = i === 0 ? eloResult?.a : eloResult?.b;
+    const opponent = i === 0 ? eloResult?.b : eloResult?.a;
     sendMsg(seat.send, {
       type: "game_over",
       youIndex: i,
       state,
       names,
       winnerIndex,
+      elo:
+        you && opponent
+          ? {
+              you: {
+                before: you.before,
+                after: you.after,
+                delta: you.delta,
+              },
+              opponent: {
+                before: opponent.before,
+                after: opponent.after,
+                delta: opponent.delta,
+              },
+            }
+          : null,
     });
   }
 
@@ -99,16 +152,16 @@ function handleGameOver(room: Room, state: GameState): void {
     room.scoresSaved = true;
     const rows = [];
     for (let i = 0; i < 2; i += 1) {
-      const seat = room.seats[i];
+      const seat = seats[i];
       const player = state.players[i];
       if (!seat || !player) {
         continue;
       }
-      const opponent = state.players[1 - i]?.score ?? 0;
+      const opponentScore = state.players[1 - i]?.score ?? 0;
       rows.push({
         userId: seat.user.userId,
         displayName: seat.user.displayName,
-        score: player.score - opponent,
+        score: player.score - opponentScore,
         level: player.level,
         sizeId: room.sizeId,
       });

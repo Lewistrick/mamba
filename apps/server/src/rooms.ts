@@ -38,6 +38,7 @@ export interface Room {
   tick: number;
   timer: ReturnType<typeof setInterval> | null;
   scoresSaved: boolean;
+  eloApplied: boolean;
 }
 
 /** Result of creating a room. */
@@ -91,6 +92,7 @@ export class RoomManager {
       tick: 0,
       timer: null,
       scoresSaved: false,
+      eloApplied: false,
     };
     this.rooms.set(code, room);
     return { ok: true, room };
@@ -316,12 +318,14 @@ export class RoomManager {
         continue;
       }
       affected.push(room.code);
-      room.seats[idx] = null;
 
       if (room.status === "playing" && room.game) {
         const state = room.game.forfeit(idx);
+        // Keep seats filled so score/Elo callbacks can see both players.
         this.finishMatch(room, state, onGameOver ?? (() => undefined));
       }
+
+      room.seats[idx] = null;
 
       const remaining = room.seats.filter(Boolean).length;
       if (remaining === 0 || room.status === "finished") {

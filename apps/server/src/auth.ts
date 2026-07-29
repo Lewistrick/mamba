@@ -3,6 +3,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { INITIAL_ELO, type EloChange } from "./elo.ts";
 
 /** Authenticated multiplayer identity. */
 export interface MpUser {
@@ -90,6 +91,65 @@ export async function insertMpScores(
     });
     if (error) {
       console.error("insertMpScores", error.message);
+    }
+  }
+}
+
+/**
+ * Loads Elo ratings for two users (defaults to INITIAL_ELO).
+ *
+ * @param supabase - Admin client.
+ * @param userIdA - Seat 0.
+ * @param userIdB - Seat 1.
+ * @returns Ratings for A and B.
+ */
+export async function fetchElos(
+  supabase: SupabaseClient,
+  userIdA: string,
+  userIdB: string,
+): Promise<[number, number]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, elo")
+    .in("id", [userIdA, userIdB]);
+  if (error) {
+    console.error("fetchElos", error.message);
+    return [INITIAL_ELO, INITIAL_ELO];
+  }
+  const map = new Map<string, number>();
+  for (const row of data ?? []) {
+    const elo = Number(row.elo);
+    map.set(String(row.id), Number.isFinite(elo) ? elo : INITIAL_ELO);
+  }
+  return [map.get(userIdA) ?? INITIAL_ELO, map.get(userIdB) ?? INITIAL_ELO];
+}
+
+/**
+ * Persists updated Elo ratings after a match.
+ *
+ * @param supabase - Admin client.
+ * @param userIdA - Seat 0.
+ * @param userIdB - Seat 1.
+ * @param a - Seat 0 change.
+ * @param b - Seat 1 change.
+ */
+export async function persistElos(
+  supabase: SupabaseClient,
+  userIdA: string,
+  userIdB: string,
+  a: EloChange,
+  b: EloChange,
+): Promise<void> {
+  for (const [userId, after] of [
+    [userIdA, a.after],
+    [userIdB, b.after],
+  ] as const) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ elo: after })
+      .eq("id", userId);
+    if (error) {
+      console.error("persistElos", error.message);
     }
   }
 }

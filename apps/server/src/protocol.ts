@@ -64,4 +64,9 @@ export type ServerMessage =
       state: GameState;
       names: [string, string];
       winnerIndex: number | null;
+      /** Elo before/after for this client and opponent (null if update failed). */
+      elo: {
+        you: { before: number; after: number; delta: number };
+        opponent: { before: number; after: number; delta: number };
+      } | null;
     };

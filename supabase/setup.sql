@@ -6,11 +6,15 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   display_name text not null default 'AAA',
   username_set boolean not null default false,
+  elo integer not null default 1000,
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles
   add column if not exists username_set boolean not null default false;
+
+alter table public.profiles
+  add column if not exists elo integer not null default 1000;
 
 create table if not exists public.scores (
   id uuid primary key default gen_random_uuid(),
@@ -66,8 +70,8 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, display_name, username_set)
-  values (new.id, 'AAA', false)
+  insert into public.profiles (id, display_name, username_set, elo)
+  values (new.id, 'AAA', false, 1000)
   on conflict (id) do nothing;
   return new;
 end;
@@ -78,8 +82,28 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Clients may update display_name / username_set, but not forge Elo.
+create or replace function public.profiles_guard_elo()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'UPDATE'
+     and new.elo is distinct from old.elo
+     and auth.role() is distinct from 'service_role' then
+    new.elo := old.elo;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_guard_elo on public.profiles;
+create trigger profiles_guard_elo
+  before update on public.profiles
+  for each row execute function public.profiles_guard_elo();
+
 -- Backfill a profile row for users who signed up before the trigger existed.
-insert into public.profiles (id, display_name, username_set)
-select id, 'AAA', false
+insert into public.profiles (id, display_name, username_set, elo)
+select id, 'AAA', false, 1000
 from auth.users
 on conflict (id) do nothing;

@@ -45,6 +45,10 @@ export type MpServerMessage =
       state: GameState;
       names: [string, string];
       winnerIndex: number | null;
+      elo: {
+        you: { before: number; after: number; delta: number };
+        opponent: { before: number; after: number; delta: number };
+      } | null;
     };
 
 type Handler = (msg: MpServerMessage) => void;

@@ -127,6 +127,7 @@ const profileBackBtn = document.querySelector<HTMLButtonElement>("#btn-profile-b
 const profileUsernameForm = document.querySelector<HTMLFormElement>("#profile-username-form");
 const profileUsernameInput = document.querySelector<HTMLInputElement>("#profile-username");
 const profileUsernameMsg = document.querySelector<HTMLElement>("#profile-username-msg");
+const profileElo = document.querySelector<HTMLElement>("#profile-elo");
 const profilePasswordForm = document.querySelector<HTMLFormElement>("#profile-password-form");
 const profilePasswordInput = document.querySelector<HTMLInputElement>("#profile-password");
 const profilePasswordConfirm = document.querySelector<HTMLInputElement>(
@@ -180,6 +181,7 @@ if (
   !profileUsernameForm ||
   !profileUsernameInput ||
   !profileUsernameMsg ||
+  !profileElo ||
   !profilePasswordForm ||
   !profilePasswordInput ||
   !profilePasswordConfirm ||
@@ -232,6 +234,7 @@ const profileBackEl = profileBackBtn;
 const profileUsernameFormEl = profileUsernameForm;
 const profileUsernameEl = profileUsernameInput;
 const profileUsernameMsgEl = profileUsernameMsg;
+const profileEloEl = profileElo;
 const profilePasswordFormEl = profilePasswordForm;
 const profilePasswordEl = profilePasswordInput;
 const profilePasswordConfirmEl = profilePasswordConfirm;
@@ -279,12 +282,18 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     paused = false;
     playBtn.textContent = "Leave match";
   },
-  onMatchOver: (view, youIndex, names, winnerIndex) => {
+  onMatchOver: (view, youIndex, names, winnerIndex, elo) => {
     mpPlaying = false;
     state = view;
     screen = "gameover";
     playBtn.textContent = "Play again";
-    const text = mpGameOverText(view, names, youIndex, winnerIndex);
+    const text = mpGameOverText(
+      view,
+      names,
+      youIndex,
+      winnerIndex,
+      elo?.you ?? null,
+    );
     goScoreEl.textContent = text;
     overlayEl.hidden = false;
     guestFormEl.hidden = true;
@@ -296,6 +305,9 @@ const mpLobby = new MpLobbyController(mpPageEl, {
           ? "Draw"
           : "You lose",
     );
+    if (elo?.you && profile) {
+      profile = { ...profile, elo: elo.you.after };
+    }
     void refreshLeaderboard();
     mpPageEl.hidden = false;
     screen = "multiplayer";
@@ -685,6 +697,8 @@ async function openProfilePage(): Promise<void> {
   helpPageEl.hidden = true;
   profilePageEl.hidden = false;
   profileUsernameEl.value = profile?.displayName ?? "";
+  profileEloEl.textContent =
+    profile != null ? `Elo ${profile.elo}` : "Elo —";
   profilePasswordEl.value = "";
   profilePasswordConfirmEl.value = "";
   setProfileMsg(profileUsernameMsgEl, null);
