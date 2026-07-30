@@ -812,6 +812,7 @@ function syncPlayButton(): void {
   const blocked = needsUsername();
   playBtn.disabled = blocked;
   playBtn.title = blocked ? "Set a username first" : "";
+  multiplayerBtnEl.hidden = !signedInEmail;
 }
 
 /**
