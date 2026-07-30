@@ -298,6 +298,13 @@ export class MpClient {
     this.send({ type: "leave_queue" });
   }
 
+  /**
+   * Manual testing only: toggles freezing the sender's own snake in place.
+   */
+  toggleFreeze(): void {
+    this.send({ type: "toggle_freeze" });
+  }
+
   private send(msg: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));

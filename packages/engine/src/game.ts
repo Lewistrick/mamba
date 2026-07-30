@@ -146,6 +146,8 @@ export class Game {
   private status: GameStatus = "playing";
   private tickCount = 0;
   private events: GameEvent[] = [];
+  /** Per-player freeze flag (manual testing only) — a frozen snake stays put but still blocks. */
+  private frozen: boolean[] = [];
 
   /**
    * Creates and initializes a new game.
@@ -162,6 +164,31 @@ export class Game {
     const length = config.startLength ?? START_LENGTH;
     this.initPlayers(length);
     this.spawnInitialBlues();
+    this.frozen = this.players.map(() => false);
+  }
+
+  /**
+   * Freezes or unfreezes a player: while frozen, their snake doesn't move,
+   * eat, molt, or die — it just sits in place as an obstacle for the other
+   * snake. Manual multiplayer testing only (no solo/AI use).
+   *
+   * @param playerIndex - Player to freeze/unfreeze.
+   * @param frozen - True to freeze.
+   */
+  setFrozen(playerIndex: number, frozen: boolean): void {
+    if (playerIndex >= 0 && playerIndex < this.frozen.length) {
+      this.frozen[playerIndex] = frozen;
+    }
+  }
+
+  /**
+   * Whether a player is currently frozen.
+   *
+   * @param playerIndex - Player to check.
+   * @returns True if frozen.
+   */
+  isFrozen(playerIndex: number): boolean {
+    return this.frozen[playerIndex] ?? false;
   }
 
   /**
@@ -478,11 +505,14 @@ export class Game {
     const livingIndexes = this.players
       .map((p, i) => (p.alive ? i : -1))
       .filter((i) => i >= 0);
+    // Frozen snakes (manual testing only) sit out movement entirely — they
+    // stay put but remain solid via hitsAnySnake's frozen check below.
+    const movingIndexes = livingIndexes.filter((i) => !this.frozen[i]);
 
     const nextHeads = new Map<number, Point>();
     const willGrow = new Map<number, boolean>();
 
-    for (const i of livingIndexes) {
+    for (const i of movingIndexes) {
       const player = this.players[i];
       const delta = DELTA[player.direction];
       const next: Point = {
@@ -494,10 +524,10 @@ export class Game {
     }
 
     // Head-on / same-cell collisions.
-    for (let a = 0; a < livingIndexes.length; a += 1) {
-      for (let b = a + 1; b < livingIndexes.length; b += 1) {
-        const ia = livingIndexes[a];
-        const ib = livingIndexes[b];
+    for (let a = 0; a < movingIndexes.length; a += 1) {
+      for (let b = a + 1; b < movingIndexes.length; b += 1) {
+        const ia = movingIndexes[a];
+        const ib = movingIndexes[b];
         const ha = nextHeads.get(ia)!;
         const hb = nextHeads.get(ib)!;
         const swap =
@@ -512,7 +542,7 @@ export class Game {
       }
     }
 
-    for (const i of livingIndexes) {
+    for (const i of movingIndexes) {
       if (!this.players[i].alive) {
         continue;
       }
@@ -534,7 +564,7 @@ export class Game {
 
     // Claim pellets: lower index wins ties.
     const pelletClaims = new Map<string, number>();
-    for (const i of livingIndexes) {
+    for (const i of movingIndexes) {
       if (!this.players[i].alive) {
         continue;
       }
@@ -549,7 +579,7 @@ export class Game {
     }
 
     const molted: number[] = [];
-    for (const i of livingIndexes) {
+    for (const i of movingIndexes) {
       if (!this.players[i].alive) {
         continue;
       }
@@ -589,13 +619,13 @@ export class Game {
     if (this.tickCount === 0 || this.tickCount % TICKS_PER_SECOND !== 0) {
       return;
     }
-    for (const player of this.players) {
-      if (!player.alive) {
-        continue;
+    this.players.forEach((player, i) => {
+      if (!player.alive || this.frozen[i]) {
+        return;
       }
       player.score += player.level;
       player.survivalScore += player.level;
-    }
+    });
   }
 
   /**
@@ -1096,8 +1126,9 @@ export class Game {
       let limit = body.length;
       if (i === selfIndex) {
         limit = grow ? body.length : body.length - 1;
-      } else if (other.alive) {
+      } else if (other.alive && !this.frozen[i]) {
         // Other living snake will move: tail vacates unless they grow into a pellet.
+        // (A frozen other doesn't move, so its tail never vacates — full body blocks.)
         const otherNext = {
           x: body[0].x + DELTA[other.direction].x,
           y: body[0].y + DELTA[other.direction].y,

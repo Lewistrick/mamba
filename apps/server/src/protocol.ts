@@ -78,7 +78,9 @@ export type ClientMessage =
   | { type: "spectate"; code: string }
   | { type: "stop_spectate" }
   | { type: "queue_join" }
-  | { type: "leave_queue" };
+  | { type: "leave_queue" }
+  /** Manual testing only: toggles the sender's own snake frozen/unfrozen. */
+  | { type: "toggle_freeze" };
 
 /** Server → client. */
 export type ServerMessage =

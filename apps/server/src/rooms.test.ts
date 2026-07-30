@@ -144,6 +144,28 @@ describe("RoomManager", () => {
     expect(snap.players.every((p) => p.rematchWanted === false)).toBe(true);
   });
 
+  it("toggles freeze for the requesting seated player only while playing", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.join(seat("b", "Bob"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+
+    // Not "playing" yet (still "readying") — no-op.
+    mgr.toggleFreezeForUser("b");
+    expect(created.room.game?.isFrozen(1)).toBe(false);
+
+    created.room.status = "playing";
+    mgr.toggleFreezeForUser("b");
+    expect(created.room.game?.isFrozen(1)).toBe(true);
+    expect(created.room.game?.isFrozen(0)).toBe(false);
+    mgr.toggleFreezeForUser("b");
+    expect(created.room.game?.isFrozen(1)).toBe(false);
+  });
+
   it("keeps the wins tally across a same-pair rematch", () => {
     const mgr = new RoomManager();
     const created = mgr.create(seat("a", "Alice"), "medium", "public");

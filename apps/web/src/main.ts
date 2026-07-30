@@ -319,6 +319,12 @@ let spectating = false;
  * mpPlaying is briefly false). Drives the Scores vs. standings panel swap.
  */
 let inMpRoom = false;
+/**
+ * Easter egg: true right after a single P press, cleared by any arrow key.
+ * A second P while still armed (mid-match) freezes the local snake in
+ * place — manual testing only.
+ */
+let pArmed = false;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -578,10 +584,10 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     const { names, winnerIndex, state } = lastGame;
     const youWins = winnerIndex !== null && winnerIndex === 0;
     const oppWins = winnerIndex !== null && winnerIndex === 1;
-    const { youName, oppName, rows } = mpScoreTable(state, names, 0);
+    const { rows } = mpScoreTable(state, names, 0);
     mpStandingsEmptyEl.hidden = true;
     mpStandingsTableEl.hidden = false;
-    buildScoreTable(mpStandingsTableEl, youName, oppName, rows, youWins, oppWins);
+    buildStandingsTable(mpStandingsTableEl, rows, youWins, oppWins);
   },
 });
 
@@ -1309,6 +1315,38 @@ function buildScoreTable(
   }
 }
 
+/**
+ * Fills the standings panel's last-game table: no header row (names already
+ * shown above it in the panel), columns reordered to left value | label |
+ * right value so each value sits under its matching name.
+ *
+ * @param tableEl - Target `<table>`.
+ * @param rows - Row label + per-player values.
+ * @param youWins - Highlight the left column.
+ * @param oppWins - Highlight the right column.
+ */
+function buildStandingsTable(
+  tableEl: HTMLTableElement,
+  rows: { label: string; you: number; opp: number }[],
+  youWins: boolean,
+  oppWins: boolean,
+): void {
+  tableEl.replaceChildren();
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const youCell = document.createElement("td");
+    youCell.textContent = String(row.you);
+    youCell.classList.toggle("winner", youWins);
+    const labelCell = document.createElement("td");
+    labelCell.textContent = row.label;
+    const oppCell = document.createElement("td");
+    oppCell.textContent = String(row.opp);
+    oppCell.classList.toggle("winner", oppWins);
+    tr.append(youCell, labelCell, oppCell);
+    tableEl.append(tr);
+  }
+}
+
 function renderMpGameOver(
   view: GameState,
   names: [string, string],
@@ -1647,7 +1685,22 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   if (event.key === "p" || event.key === "P") {
-    if (event.repeat || mpPlaying || spectating) {
+    if (event.repeat) {
+      return;
+    }
+    if (mpPlaying && !paused && screen === "playing") {
+      // Easter egg: P, P (no arrow keys in between) freezes your own snake
+      // in place for manual testing — the opponent keeps playing normally.
+      event.preventDefault();
+      if (pArmed) {
+        pArmed = false;
+        mpLobby.toggleFreeze();
+      } else {
+        pArmed = true;
+      }
+      return;
+    }
+    if (mpPlaying || spectating) {
       return;
     }
     event.preventDefault();
@@ -1665,6 +1718,9 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 
   const dir = KEY_TO_DIR[event.key];
+  if (dir) {
+    pArmed = false;
+  }
   if (dir && screen === "playing" && !paused) {
     event.preventDefault();
     if (event.repeat) {

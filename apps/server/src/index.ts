@@ -474,6 +474,10 @@ app.get(
               rooms.queueInputForUser(user.userId, msg.dir as Direction);
               break;
             }
+            case "toggle_freeze": {
+              rooms.toggleFreezeForUser(user.userId);
+              break;
+            }
             case "spectate": {
               const room = rooms.findByCode(msg.code);
               if (!room) {

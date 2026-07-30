@@ -898,3 +898,78 @@ describe("fair (real multiplayer)", () => {
     expect(game.netScore()).toBe(20);
   });
 });
+
+describe("freeze (manual multiplayer testing)", () => {
+  it("keeps a frozen snake's body unchanged while the opponent keeps moving", () => {
+    const game = Game.versusHuman("small", 1);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        alive: boolean;
+        inputQueue: unknown[];
+      }>;
+    };
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    g.players[1].body = [
+      { x: 10, y: 8 },
+      { x: 11, y: 8 },
+      { x: 12, y: 8 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+
+    expect(game.isFrozen(0)).toBe(false);
+    game.setFrozen(0, true);
+    expect(game.isFrozen(0)).toBe(true);
+
+    const before = JSON.stringify(g.players[0].body);
+    for (let i = 0; i < 3; i += 1) {
+      game.tick();
+    }
+    expect(JSON.stringify(g.players[0].body)).toBe(before);
+    expect(g.players[1].body[0]).not.toEqual({ x: 10, y: 8 });
+    expect(g.players[0].alive).toBe(true);
+  });
+
+  it("still blocks the opponent, including the frozen snake's tail", () => {
+    const game = Game.versusHuman("small", 2);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        alive: boolean;
+        inputQueue: unknown[];
+      }>;
+    };
+    // Frozen snake occupies x=5..7 at y=5. A normally-moving snake's tail
+    // would vacate x=7 this tick, but a frozen one never moves, so the
+    // mover approaching from the right should die running into it.
+    g.players[0].body = [
+      { x: 5, y: 5 },
+      { x: 6, y: 5 },
+      { x: 7, y: 5 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    game.setFrozen(0, true);
+
+    g.players[1].body = [
+      { x: 8, y: 5 },
+      { x: 9, y: 5 },
+      { x: 10, y: 5 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+
+    game.tick();
+    expect(g.players[1].alive).toBe(false);
+    expect(g.players[0].alive).toBe(true);
+  });
+});

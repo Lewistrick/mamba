@@ -303,6 +303,13 @@ export class MpLobbyController {
     this.client?.sendInput(dir);
   }
 
+  /**
+   * Manual testing only: toggles freezing the local player's own snake.
+   */
+  toggleFreeze(): void {
+    this.client?.toggleFreeze();
+  }
+
   private selectedSize(): FieldSizeId {
     const el = this.root.querySelector<HTMLInputElement>(
       'input[name="mp-size"]:checked',

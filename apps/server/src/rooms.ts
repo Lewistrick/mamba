@@ -667,6 +667,26 @@ export class RoomManager {
   }
 
   /**
+   * Toggles the freeze state for whichever seated player this user is, in
+   * whatever room they're currently playing. Manual testing only — lets a
+   * player pause their own snake in place while the opponent keeps playing.
+   *
+   * @param userId - Player id.
+   */
+  toggleFreezeForUser(userId: string): void {
+    for (const room of this.rooms.values()) {
+      if (room.status !== "playing" || !room.game) {
+        continue;
+      }
+      const idx = room.seats.findIndex((s) => s?.user.userId === userId);
+      if (idx >= 0) {
+        room.game.setFrozen(idx, !room.game.isFrozen(idx));
+        return;
+      }
+    }
+  }
+
+  /**
    * Removes a user from any room; closes empty rooms; ends match if mid-game.
    *
    * If a queued spectator is waiting and the room has already reached

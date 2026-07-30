@@ -484,22 +484,36 @@ body {
   color: var(--accent-green);
 }
 
-/* Narrow sidebar context: fixed layout + truncation instead of overflow. */
+/*
+ * Narrow sidebar context: no header row (names already shown above in
+ * .mp-standings-names), columns reordered so values sit under their
+ * matching name — left value | label | right value.
+ */
 #mp-standings-table {
   table-layout: fixed;
   width: 100%;
 }
 
-#mp-standings-table th,
 #mp-standings-table td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#mp-standings-table th:first-child,
 #mp-standings-table td:first-child {
-  width: 5.2rem;
+  text-align: left;
+  width: 27%;
+}
+
+#mp-standings-table td:nth-child(2) {
+  text-align: center;
+  color: var(--muted);
+  width: 46%;
+}
+
+#mp-standings-table td:last-child {
+  text-align: right;
+  width: 27%;
 }
 
 .go-mp-elo {
