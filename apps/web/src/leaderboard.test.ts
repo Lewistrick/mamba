@@ -63,21 +63,14 @@ describe("periodStart", () => {
     expect(periodStart("all", Date.parse("2026-07-26T15:00:00"))).toBe(0);
   });
 
-  it("uses local midnight for daily", () => {
+  it("uses a rolling 24h window for daily, not calendar-day start", () => {
     const now = Date.parse("2026-07-26T15:30:00");
-    const start = periodStart("daily", now);
-    const d = new Date(start);
-    expect(d.getHours()).toBe(0);
-    expect(d.getDate()).toBe(26);
+    expect(periodStart("daily", now)).toBe(now - 24 * 60 * 60 * 1000);
   });
 
-  it("uses Monday local midnight for weekly", () => {
-    // Sunday 2026-07-26 → week starts Monday 2026-07-20
+  it("uses a rolling 7-day window for weekly, not calendar-week start", () => {
     const now = Date.parse("2026-07-26T12:00:00");
-    const start = periodStart("weekly", now);
-    const d = new Date(start);
-    expect(d.getDay()).toBe(1);
-    expect(d.getDate()).toBe(20);
+    expect(periodStart("weekly", now)).toBe(now - 7 * 24 * 60 * 60 * 1000);
   });
 });
 
@@ -92,13 +85,14 @@ describe("getBoard / submitScore", () => {
     expect(board[9].score).toBe(30);
   });
 
-  it("filters daily scores by createdAt", () => {
-    const day = Date.parse("2026-07-26T10:00:00");
-    const earlier = Date.parse("2026-07-25T23:00:00");
-    submitScore(entry({ score: 50, createdAt: earlier, name: "OLD" }));
-    submitScore(entry({ score: 40, createdAt: day, name: "NEW" }));
+  it("filters daily scores by a rolling 24h window", () => {
+    const now = Date.parse("2026-07-26T10:00:00");
+    const withinLast24h = Date.parse("2026-07-26T02:00:00"); // 8h ago
+    const overADayAgo = Date.parse("2026-07-24T23:00:00"); // ~35h ago
+    submitScore(entry({ score: 50, createdAt: overADayAgo, name: "OLD" }));
+    submitScore(entry({ score: 40, createdAt: withinLast24h, name: "NEW" }));
 
-    const daily = getBoard("medium", "solo", "daily", day);
+    const daily = getBoard("medium", "solo", "daily", now);
     expect(daily).toHaveLength(1);
     expect(daily[0].name).toBe("NEW");
   });

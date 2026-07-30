@@ -26,30 +26,24 @@ export interface ScoreEntry {
   createdAt: number;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Returns the local-time start of the given period window.
+ * Returns the rolling-window start for the given period.
  *
  * @param period - all / weekly / daily.
  * @param now - Reference instant (ms).
- * @returns Inclusive lower bound for `createdAt`, or 0 for all-time.
+ * @returns Inclusive lower bound for `createdAt`: `now` minus 24h (daily) or
+ * 7 days (weekly), or 0 for all-time — not calendar-day/week boundaries.
  */
 export function periodStart(period: LeaderboardPeriod, now: number = Date.now()): number {
   if (period === "all") {
     return 0;
   }
-
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-
   if (period === "daily") {
-    return d.getTime();
+    return now - DAY_MS;
   }
-
-  // Monday-start week in local time.
-  const day = d.getDay();
-  const daysFromMonday = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - daysFromMonday);
-  return d.getTime();
+  return now - 7 * DAY_MS;
 }
 
 /**
