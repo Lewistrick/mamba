@@ -325,6 +325,8 @@ let inMpRoom = false;
  * place — manual testing only.
  */
 let pArmed = false;
+/** True while the local snake is frozen (the easter egg above) — any next keypress unfreezes it. */
+let frozen = false;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -374,6 +376,8 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     paused = true;
     mpPlaying = true;
     inMpRoom = true;
+    pArmed = false;
+    frozen = false;
     playBtn.textContent = "Leave match";
     setStatus(
       code
@@ -413,6 +417,8 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     paused = true;
     mpPlaying = true;
     inMpRoom = true;
+    pArmed = false;
+    frozen = false;
     playBtn.textContent = "Leave match";
     setStatus("Opponent joined — toggle Ready when set");
   },
@@ -424,6 +430,8 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     paused = true;
     mpPlaying = true;
     inMpRoom = true;
+    pArmed = false;
+    frozen = false;
     playBtn.textContent = "Leave match";
     setStatus("Starting…");
   },
@@ -441,6 +449,8 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   onMatchOver: (view, youIndex, names, winnerIndex, elo) => {
     mpPlaying = false;
     inMpRoom = true;
+    pArmed = false;
+    frozen = false;
     state = view;
     screen = "gameover";
     playBtn.textContent = "Play again";
@@ -1487,6 +1497,8 @@ function leaveMultiplayerRoom(): void {
   mpPlaying = false;
   spectating = false;
   inMpRoom = false;
+  pArmed = false;
+  frozen = false;
   screen = "menu";
   state = null;
   game = null;
@@ -1640,6 +1652,13 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (frozen) {
+    // Any keypress unfreezes — falls through so this same key still does
+    // its normal thing too (e.g. an arrow key also steers).
+    frozen = false;
+    mpLobby.toggleFreeze();
+  }
+
   if (screen === "profile" || screen === "help" || screen === "multiplayer") {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -1695,6 +1714,7 @@ function onKeyDown(event: KeyboardEvent): void {
       if (pArmed) {
         pArmed = false;
         mpLobby.toggleFreeze();
+        frozen = true;
       } else {
         pArmed = true;
       }
