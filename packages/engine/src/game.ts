@@ -142,7 +142,7 @@ export class Game {
   private walls = new Set<string>();
   private bluePellets = new Set<string>();
   private greenPellets = new Set<string>();
-  private yellowPellet: YellowPellet | null = null;
+  private yellowPellets: YellowPellet[] = [];
   private status: GameStatus = "playing";
   private tickCount = 0;
   private events: GameEvent[] = [];
@@ -393,14 +393,12 @@ export class Game {
       walls: [...this.walls].map(parseKey),
       bluePellets: [...this.bluePellets].map(parseKey),
       greenPellets: [...this.greenPellets].map(parseKey),
-      yellowPellet: this.yellowPellet
-        ? {
-            pos: { ...this.yellowPellet.pos },
-            value: this.yellowPellet.value,
-            ttl: this.yellowPellet.ttl,
-            graceTicksRemaining: this.yellowPellet.graceTicksRemaining,
-          }
-        : null,
+      yellowPellets: this.yellowPellets.map((yp) => ({
+        pos: { ...yp.pos },
+        value: yp.value,
+        ttl: yp.ttl,
+        graceTicksRemaining: yp.graceTicksRemaining,
+      })),
       score: p0.score,
       survivalScore: p0.survivalScore,
       winBonus: p0.winBonus,
@@ -689,89 +687,84 @@ export class Game {
   }
 
   /**
-   * Advances yellow grace / TTL using the closest living snake head.
+   * Advances grace / TTL for every active yellow pellet using the closest
+   * living snake head. Each pellet decays independently, so several can be
+   * mid-grace or mid-countdown at once.
    */
   private decayYellow(): void {
-    if (this.yellowPellet === null) {
+    if (this.yellowPellets.length === 0) {
       return;
     }
 
-    if (this.yellowPellet.graceTicksRemaining > 0) {
-      const graceTicksRemaining = this.yellowPellet.graceTicksRemaining - 1;
-      if (graceTicksRemaining > 0) {
-        this.yellowPellet = { ...this.yellowPellet, graceTicksRemaining };
-        return;
+    const blocked = new Set<string>(this.walls);
+    for (const player of this.players) {
+      if (!player.alive) {
+        continue;
       }
+      for (const segment of player.body) {
+        blocked.add(key(segment));
+      }
+    }
 
-      const blocked = new Set<string>(this.walls);
-      for (const player of this.players) {
-        if (!player.alive) {
+    const next: YellowPellet[] = [];
+    for (const pellet of this.yellowPellets) {
+      if (pellet.graceTicksRemaining > 0) {
+        const graceTicksRemaining = pellet.graceTicksRemaining - 1;
+        if (graceTicksRemaining > 0) {
+          next.push({ ...pellet, graceTicksRemaining });
           continue;
         }
-        for (const segment of player.body) {
-          blocked.add(key(segment));
+
+        const headDistances: { head: Point; distance: number }[] = [];
+        for (const player of this.players) {
+          if (!player.alive) {
+            continue;
+          }
+          const head = player.body[0];
+          const distance = dijkstraDistance(
+            this.width,
+            this.height,
+            head,
+            pellet.pos,
+            blocked,
+          );
+          if (distance !== null) {
+            headDistances.push({ head, distance });
+          }
         }
+
+        let ttl: number;
+        if (this.playerCount === 2 && headDistances.length === 2) {
+          // Fair timer: enough ticks for the farther snake (spawn aims for equal dists).
+          ttl = Math.max(headDistances[0].distance, headDistances[1].distance) +
+            YELLOW_GRACE_TICKS;
+        } else if (headDistances.length > 0) {
+          const best = headDistances.reduce((a, b) =>
+            a.distance < b.distance ? a : b,
+          );
+          ttl =
+            best.distance > 0
+              ? best.distance + YELLOW_GRACE_TICKS
+              : unreachableYellowTtl(best.head, pellet.pos);
+        } else {
+          ttl = unreachableYellowTtl(this.players[0].body[0], pellet.pos);
+        }
+        next.push({ ...pellet, graceTicksRemaining: 0, ttl });
+        continue;
       }
 
-      const headDistances: { head: Point; distance: number }[] = [];
-      for (const player of this.players) {
-        if (!player.alive) {
-          continue;
-        }
-        const head = player.body[0];
-        const distance = dijkstraDistance(
-          this.width,
-          this.height,
-          head,
-          this.yellowPellet.pos,
-          blocked,
-        );
-        if (distance !== null) {
-          headDistances.push({ head, distance });
-        }
+      if (pellet.ttl === null) {
+        // Grace already ended without a ttl assigned — shouldn't happen; drop defensively.
+        continue;
       }
 
-      let ttl: number;
-      if (
-        this.playerCount === 2 &&
-        headDistances.length === 2
-      ) {
-        // Fair timer: enough ticks for the farther snake (spawn aims for equal dists).
-        ttl = Math.max(headDistances[0].distance, headDistances[1].distance) +
-          YELLOW_GRACE_TICKS;
-      } else if (headDistances.length > 0) {
-        const best = headDistances.reduce((a, b) =>
-          a.distance < b.distance ? a : b,
-        );
-        ttl =
-          best.distance > 0
-            ? best.distance + YELLOW_GRACE_TICKS
-            : unreachableYellowTtl(best.head, this.yellowPellet.pos);
-      } else {
-        ttl = unreachableYellowTtl(
-          this.players[0].body[0],
-          this.yellowPellet.pos,
-        );
+      const ttl = pellet.ttl - 1;
+      if (ttl <= 0) {
+        continue;
       }
-      this.yellowPellet = {
-        ...this.yellowPellet,
-        graceTicksRemaining: 0,
-        ttl,
-      };
-      return;
+      next.push({ ...pellet, ttl });
     }
-
-    if (this.yellowPellet.ttl === null) {
-      this.yellowPellet = null;
-      return;
-    }
-
-    const ttl = this.yellowPellet.ttl - 1;
-    if (ttl <= 0) {
-      this.yellowPellet = null;
-      return;
-    }
-    this.yellowPellet = { ...this.yellowPellet, ttl };
+    this.yellowPellets = next;
   }
 
   /**
@@ -788,14 +781,36 @@ export class Game {
     if (this.greenPellets.has(k)) {
       return "green";
     }
-    if (
-      this.yellowPellet !== null &&
-      this.yellowPellet.pos.x === pos.x &&
-      this.yellowPellet.pos.y === pos.y
-    ) {
+    if (this.isYellowOccupied(pos)) {
       return "yellow";
     }
     return null;
+  }
+
+  /**
+   * Whether any active yellow pellet sits on this cell.
+   *
+   * @param p - Cell to test.
+   * @returns True if occupied by a yellow pellet.
+   */
+  private isYellowOccupied(p: Point): boolean {
+    return this.yellowPellets.some((yp) => yp.pos.x === p.x && yp.pos.y === p.y);
+  }
+
+  /**
+   * Removes and returns the yellow pellet at a cell, if any.
+   *
+   * @param pos - Cell to inspect.
+   * @returns The removed pellet, or null if none was there.
+   */
+  private takeYellowAt(pos: Point): YellowPellet | null {
+    const idx = this.yellowPellets.findIndex(
+      (yp) => yp.pos.x === pos.x && yp.pos.y === pos.y,
+    );
+    if (idx === -1) {
+      return null;
+    }
+    return this.yellowPellets.splice(idx, 1)[0];
   }
 
   /**
@@ -831,8 +846,8 @@ export class Game {
       return true;
     }
 
-    player.score += this.yellowPellet!.value;
-    this.yellowPellet = null;
+    const yellow = this.takeYellowAt(pos)!;
+    player.score += yellow.value;
     this.events.push({ type: "eat_yellow", player: playerIndex });
     this.spawnPellet();
     this.spawnPellet();
@@ -871,9 +886,9 @@ export class Game {
    * @param molterIndex - Who molted (versus: bias spawn toward this snake).
    */
   private spawnYellow(level: number, molterIndex = 0): void {
-    if (this.yellowPellet !== null) {
-      return;
-    }
+    // No "one at a time" guard — a molt during another pellet's grace period
+    // still gets its own pellet (with its own timer), it just doesn't
+    // replace the existing one.
     const pos =
       this.playerCount === 2
         ? this.pickBiasedYellowCell(molterIndex)
@@ -887,12 +902,12 @@ export class Game {
       : randomInt(this.rng, 20, 50);
     const value = Math.floor(Math.sqrt(level) * multiplier);
 
-    this.yellowPellet = {
+    this.yellowPellets.push({
       pos,
       value,
       ttl: null,
       graceTicksRemaining: YELLOW_GRACE_TICKS,
-    };
+    });
   }
 
   /**
@@ -945,7 +960,10 @@ export class Game {
         if (this.walls.has(k) || this.isSnakeOccupied(p)) {
           continue;
         }
-        if (this.bluePellets.has(k) || this.greenPellets.has(k)) {
+        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
+          continue;
+        }
+        if (this.tooCloseToAnyHead(p)) {
           continue;
         }
         const dM = distMolter.get(k);
@@ -1043,14 +1061,10 @@ export class Game {
         if (this.isSnakeOccupied(p)) {
           continue;
         }
-        if (this.bluePellets.has(k) || this.greenPellets.has(k)) {
+        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
           continue;
         }
-        if (
-          this.yellowPellet !== null &&
-          this.yellowPellet.pos.x === x &&
-          this.yellowPellet.pos.y === y
-        ) {
+        if (this.tooCloseToAnyHead(p)) {
           continue;
         }
         candidates.push(p);
@@ -1076,14 +1090,10 @@ export class Game {
         if (this.walls.has(k) || this.isSnakeOccupied(p)) {
           continue;
         }
-        if (this.bluePellets.has(k) || this.greenPellets.has(k)) {
+        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
           continue;
         }
-        if (
-          this.yellowPellet !== null &&
-          this.yellowPellet.pos.x === x &&
-          this.yellowPellet.pos.y === y
-        ) {
+        if (this.tooCloseToAnyHead(p)) {
           continue;
         }
         candidates.push(p);
@@ -1154,6 +1164,20 @@ export class Game {
   private isSnakeOccupied(p: Point): boolean {
     return this.players.some((player) =>
       player.body.some((segment) => segment.x === p.x && segment.y === p.y),
+    );
+  }
+
+  /**
+   * Whether a cell is within Manhattan distance 5 of any living player's
+   * head — pellets never spawn this close, so nothing pops up right under
+   * a snake.
+   *
+   * @param p - Candidate cell.
+   * @returns True if too close to spawn a pellet.
+   */
+  private tooCloseToAnyHead(p: Point): boolean {
+    return this.players.some(
+      (player) => player.alive && manhattan(p, player.body[0]) <= 5,
     );
   }
 }

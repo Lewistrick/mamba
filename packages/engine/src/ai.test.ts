@@ -57,7 +57,7 @@ describe("AiBrain", () => {
       walls: Set<string>;
       bluePellets: Set<string>;
       greenPellets: Set<string>;
-      yellowPellet: null;
+      yellowPellets: unknown[];
     };
 
     // Dead-end green at (10,10): walls on N/S/W, open only to the east.
@@ -72,7 +72,7 @@ describe("AiBrain", () => {
     ]);
     g.greenPellets = new Set(["10,10"]);
     g.bluePellets = new Set(["25,5"]);
-    g.yellowPellet = null;
+    g.yellowPellets = [];
     g.players[0].body = [
       { x: 2, y: 2 },
       { x: 1, y: 2 },

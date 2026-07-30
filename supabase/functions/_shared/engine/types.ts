@@ -59,6 +59,12 @@ export interface GameConfig {
   startLength?: number;
   /** 1 = solo, 2 = human vs AI (default 1). */
   playerCount?: 1 | 2;
+  /**
+   * Deterministic scoring/molt rules for real (human vs human) multiplayer,
+   * so outcomes depend on skill rather than RNG. AI and solo games leave
+   * this false. See {@link Game.versusHuman}.
+   */
+  fair?: boolean;
 }
 
 /** Immutable snapshot of engine state for rendering / networking. */
@@ -74,7 +80,8 @@ export interface GameState {
   walls: readonly Point[];
   bluePellets: readonly Point[];
   greenPellets: readonly Point[];
-  yellowPellet: YellowPellet | null;
+  /** Every active timed bonus pellet — a molt during another's grace period adds one, doesn't replace it. */
+  yellowPellets: readonly YellowPellet[];
   /** Player 0 score. */
   score: number;
   /** Player 0 survival bonus total (+level each second). Versus / AI only. */

@@ -295,8 +295,8 @@ export class Renderer {
     for (const p of state.greenPellets) {
       this.drawTextCell(origin, p, "**", COLORS.green);
     }
-    if (state.yellowPellet) {
-      this.drawYellowPellet(origin, state.yellowPellet);
+    for (const yellow of state.yellowPellets) {
+      this.drawYellowPellet(origin, yellow);
     }
 
     for (let i = state.players.length - 1; i >= 0; i -= 1) {
@@ -309,7 +309,7 @@ export class Renderer {
    */
   private drawYellowPellet(
     origin: Point,
-    yellow: NonNullable<GameState["yellowPellet"]>,
+    yellow: GameState["yellowPellets"][number],
   ): void {
     this.fillBlock(origin, yellow.pos, COLORS.yellow);
     if (yellow.ttl === null) {

@@ -75,11 +75,10 @@ function pelletTargets(
   for (const p of state.greenPellets) {
     targets.push({ pos: p, value: state.players[1]?.greenValue ?? 10 });
   }
-  if (includeYellow && state.yellowPellet) {
-    targets.push({
-      pos: state.yellowPellet.pos,
-      value: state.yellowPellet.value,
-    });
+  if (includeYellow) {
+    for (const yp of state.yellowPellets) {
+      targets.push({ pos: yp.pos, value: yp.value });
+    }
   }
   return targets;
 }
@@ -440,10 +439,10 @@ export class AiBrain {
       if (dist === null || dist <= 0) {
         return null;
       }
-      const yellow = state.yellowPellet;
-      const isYellow =
-        yellow !== null && t.pos.x === yellow.pos.x && t.pos.y === yellow.pos.y;
-      if (isYellow && yellow.ttl !== null && dist > yellow.ttl) {
+      const yellow = state.yellowPellets.find(
+        (yp) => t.pos.x === yp.pos.x && t.pos.y === yp.pos.y,
+      );
+      if (yellow && yellow.ttl !== null && dist > yellow.ttl) {
         return null;
       }
       return t.value / dist;
@@ -564,10 +563,10 @@ export class AiBrain {
       if (dist === null || dist <= 0) {
         return null;
       }
-      const yellow = state.yellowPellet;
-      const isYellow =
-        yellow !== null && t.pos.x === yellow.pos.x && t.pos.y === yellow.pos.y;
-      if (isYellow && yellow.ttl !== null && dist > yellow.ttl) {
+      const yellow = state.yellowPellets.find(
+        (yp) => t.pos.x === yp.pos.x && t.pos.y === yp.pos.y,
+      );
+      if (yellow && yellow.ttl !== null && dist > yellow.ttl) {
         return null;
       }
       let score = (t.value * 4) / dist;

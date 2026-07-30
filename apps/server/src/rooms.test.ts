@@ -39,7 +39,7 @@ function fakeState(): GameState {
     walls: [],
     bluePellets: [],
     greenPellets: [],
-    yellowPellet: null,
+    yellowPellets: [],
     score: 0,
     survivalScore: 0,
     winBonus: 0,

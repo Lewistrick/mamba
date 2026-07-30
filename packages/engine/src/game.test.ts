@@ -195,7 +195,7 @@ describe("Game", () => {
     expect(state.snake).toHaveLength(5);
     expect(state.level).toBe(2);
     expect(state.walls.length).toBeGreaterThanOrEqual(3);
-    expect(state.yellowPellet).not.toBeNull();
+    expect(state.yellowPellets.length).toBeGreaterThan(0);
     expect(state.pelletsEatenThisLife).toBe(0);
   });
 
@@ -242,14 +242,14 @@ describe("Game", () => {
       bluePellets: Set<string>;
       greenPellets: Set<string>;
       walls: Set<string>;
-      yellowPellet: unknown;
+      yellowPellets: unknown[];
       spawnYellow: (level: number, molterIndex: number) => void;
       rng: () => number;
     };
     g.bluePellets = new Set();
     g.greenPellets = new Set();
     g.walls = new Set();
-    g.yellowPellet = null;
+    g.yellowPellets = [];
     g.players[0].body = [
       { x: 2, y: 5 },
       { x: 1, y: 5 },
@@ -274,8 +274,8 @@ describe("Game", () => {
     g.players[1].alive = true;
 
     g.spawnYellow(2, 0);
-    const yellow = game.getState().yellowPellet;
-    expect(yellow).not.toBeNull();
+    const yellow = game.getState().yellowPellets[0];
+    expect(yellow).toBeDefined();
     const blocked = new Set<string>();
     for (const p of g.players) {
       for (const s of p.body) {
@@ -325,24 +325,26 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: {
+      yellowPellets: {
         pos: Point;
         value: number;
         ttl: number | null;
         graceTicksRemaining: number;
-      } | null;
+      }[];
     };
-    g.yellowPellet = {
-      pos: { x: 6, y: 5 },
-      value: 40,
-      ttl: 20,
-      graceTicksRemaining: 0,
-    };
+    g.yellowPellets = [
+      {
+        pos: { x: 6, y: 5 },
+        value: 40,
+        ttl: 20,
+        graceTicksRemaining: 0,
+      },
+    ];
 
     game.tick();
     const state = game.getState();
     expect(state.score).toBe(40);
-    expect(state.yellowPellet).toBeNull();
+    expect(state.yellowPellets).toHaveLength(0);
     expect(state.bluePellets.length + state.greenPellets.length).toBe(2);
   });
 
@@ -364,24 +366,26 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: {
+      yellowPellets: {
         pos: Point;
         value: number;
         ttl: number | null;
         graceTicksRemaining: number;
-      } | null;
+      }[];
     };
-    g.yellowPellet = {
-      pos: { x: 20, y: 10 },
-      value: 40,
-      ttl: 2,
-      graceTicksRemaining: 0,
-    };
+    g.yellowPellets = [
+      {
+        pos: { x: 20, y: 10 },
+        value: 40,
+        ttl: 2,
+        graceTicksRemaining: 0,
+      },
+    ];
 
     game.tick();
-    expect(game.getState().yellowPellet?.ttl).toBe(1);
+    expect(game.getState().yellowPellets[0]?.ttl).toBe(1);
     game.tick();
-    expect(game.getState().yellowPellet).toBeNull();
+    expect(game.getState().yellowPellets).toHaveLength(0);
   });
 
   it("assigns yellow TTL via Dijkstra after grace ticks", () => {
@@ -402,31 +406,33 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: {
+      yellowPellets: {
         pos: Point;
         value: number;
         ttl: number | null;
         graceTicksRemaining: number;
-      } | null;
+      }[];
     };
-    g.yellowPellet = {
-      pos: { x: 15, y: 5 },
-      value: 40,
-      ttl: null,
-      graceTicksRemaining: 5,
-    };
+    g.yellowPellets = [
+      {
+        pos: { x: 15, y: 5 },
+        value: 40,
+        ttl: null,
+        graceTicksRemaining: 5,
+      },
+    ];
 
     for (let i = 0; i < 4; i += 1) {
       game.tick();
-      const yellow = game.getState().yellowPellet;
-      expect(yellow).not.toBeNull();
+      const yellow = game.getState().yellowPellets[0];
+      expect(yellow).toBeDefined();
       expect(yellow?.ttl).toBeNull();
       expect(yellow?.graceTicksRemaining).toBe(4 - i);
     }
 
     // 5th tick: grace ends; Dijkstra uses head before this tick's move ((9,5) after 4 Rights).
     game.tick();
-    const settled = game.getState().yellowPellet;
+    const settled = game.getState().yellowPellets[0];
     expect(settled?.graceTicksRemaining).toBe(0);
     // Head before 5th move is at (9,5); pellet at (15,5) → Dijkstra 6 + 5 grace buffer.
     expect(settled?.ttl).toBe(11);
@@ -458,25 +464,27 @@ describe("Game", () => {
     });
 
     const g = game as unknown as {
-      yellowPellet: {
+      yellowPellets: {
         pos: Point;
         value: number;
         ttl: number | null;
         graceTicksRemaining: number;
-      } | null;
+      }[];
       width: number;
       height: number;
     };
-    g.yellowPellet = {
-      pos: { x: 3, y: 1 },
-      value: 40,
-      ttl: null,
-      graceTicksRemaining: 1,
-    };
+    g.yellowPellets = [
+      {
+        pos: { x: 3, y: 1 },
+        value: 40,
+        ttl: null,
+        graceTicksRemaining: 1,
+      },
+    ];
 
     // Facing the border: no move progress, grace ends, Dijkstra fails.
     game.tick();
-    const settled = game.getState().yellowPellet;
+    const settled = game.getState().yellowPellets[0];
     expect(settled?.graceTicksRemaining).toBe(0);
     // max(2 * Manhattan(0,1 → 3,1)=3 → 6, 60s * 10tps = 600) = 600
     expect(settled?.ttl).toBe(600);
@@ -854,28 +862,65 @@ describe("fair (real multiplayer)", () => {
         body: { x: number; y: number }[];
         alive: boolean;
       }>;
-      yellowPellet: unknown;
+      yellowPellets: unknown[];
       spawnYellow: (level: number, molterIndex: number) => void;
     };
-    g.yellowPellet = null;
+    g.yellowPellets = [];
     g.spawnYellow(9, 0);
-    const yellow = game.getState().yellowPellet;
-    expect(yellow).not.toBeNull();
+    const yellow = game.getState().yellowPellets[0];
+    expect(yellow).toBeDefined();
     expect(yellow!.value).toBe(Math.floor(Math.sqrt(9) * 20));
   });
 
   it("keeps Game.versusAi's random 20-50 lime multiplier", () => {
     const game = Game.versusAi("small", 1);
     const g = game as unknown as {
-      yellowPellet: unknown;
+      yellowPellets: unknown[];
       spawnYellow: (level: number, molterIndex: number) => void;
     };
-    g.yellowPellet = null;
+    g.yellowPellets = [];
     g.spawnYellow(9, 0);
-    const yellow = game.getState().yellowPellet;
-    expect(yellow).not.toBeNull();
+    const yellow = game.getState().yellowPellets[0];
+    expect(yellow).toBeDefined();
     expect(yellow!.value).toBeGreaterThanOrEqual(Math.floor(Math.sqrt(9) * 20));
     expect(yellow!.value).toBeLessThanOrEqual(Math.floor(Math.sqrt(9) * 50));
+  });
+
+  it("spawns an additional yellow pellet when a molt happens during another's grace period", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      yellowPellets: unknown[];
+      spawnYellow: (level: number, molterIndex: number) => void;
+    };
+    g.yellowPellets = [];
+    g.spawnYellow(1, 0);
+    expect(game.getState().yellowPellets).toHaveLength(1);
+
+    // Second molt happens while the first pellet's grace period is still active.
+    g.spawnYellow(1, 1);
+    const pellets = game.getState().yellowPellets;
+    expect(pellets).toHaveLength(2);
+    expect(pellets[0].pos).not.toEqual(pellets[1].pos);
+  });
+
+  it("never spawns a pellet within Manhattan distance 5 of a player's head", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      players: Array<{ body: { x: number; y: number }[] }>;
+      bluePellets: Set<string>;
+      spawnPellet: () => void;
+    };
+    const head = g.players[0].body[0];
+
+    for (let i = 0; i < 100; i += 1) {
+      g.bluePellets.clear();
+      g.spawnPellet();
+      for (const k of g.bluePellets) {
+        const [x, y] = k.split(",").map(Number);
+        const distance = Math.abs(x - head.x) + Math.abs(y - head.y);
+        expect(distance).toBeGreaterThan(5);
+      }
+    }
   });
 
   it("does not deduct the opponent's pellets from net score when fair", () => {
