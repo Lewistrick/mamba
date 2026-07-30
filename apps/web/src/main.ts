@@ -40,6 +40,7 @@ import {
   hideLobbyForMatchOver,
   mpEloText,
   mpResultText,
+  mpSpectateResultText,
 } from "./mpLobby.ts";
 import {
   loadSettings,
@@ -127,6 +128,7 @@ const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
 const playAgainWait = document.querySelector<HTMLElement>("#go-play-again-wait");
 const leaveRoomBtn = document.querySelector<HTMLButtonElement>("#btn-leave-room");
+const mpReadyLeaveBtn = document.querySelector<HTMLButtonElement>("#btn-mp-ready-leave");
 const helpBtn = document.querySelector<HTMLButtonElement>("#btn-help");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
 const gameShell = document.querySelector<HTMLElement>("#game-shell");
@@ -188,6 +190,7 @@ if (
   !playAgainBtn ||
   !playAgainWait ||
   !leaveRoomBtn ||
+  !mpReadyLeaveBtn ||
   !helpBtn ||
   !gameShell ||
   !profilePage ||
@@ -247,6 +250,7 @@ const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
 const playAgainWaitEl = playAgainWait;
 const leaveRoomEl = leaveRoomBtn;
+const mpReadyLeaveEl = mpReadyLeaveBtn;
 const helpBtnEl = helpBtn;
 const gameShellEl = gameShell;
 const profilePageEl = profilePage;
@@ -396,7 +400,14 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     // Stay on the game shell with the overlay — do not reveal #mp-page
     // beside it (that stacked the lobby next to GAME OVER).
     hideLobbyForMatchOver(mpPageEl);
-    renderMpGameOver(view, names, youIndex, winnerIndex, elo?.you ?? null);
+    renderMpGameOver(
+      view,
+      names,
+      youIndex,
+      winnerIndex,
+      elo?.you ?? null,
+      mpResultText(names, youIndex, winnerIndex),
+    );
     overlayEl.hidden = false;
     guestFormEl.hidden = true;
     leaveRoomEl.hidden = false;
@@ -424,6 +435,9 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     screen = "playing";
     paused = false;
     playBtn.textContent = "Stop watching";
+    // A live match exists again — clear any game-over table left over from
+    // a previous match in this room.
+    overlayEl.hidden = true;
     const phase =
       roomStatus === "readying"
         ? "Readying up"
@@ -432,7 +446,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
           : "Watching";
     setStatus(`${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`);
   },
-  onSpectateWaiting: (sizeId, names, roomStatus) => {
+  onSpectateWaiting: (sizeId, hostName) => {
     spectating = true;
     state = placeholderState(FIELD_SIZES[sizeId]);
     game = null;
@@ -441,20 +455,34 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     paused = true;
     mpPlaying = false;
     playBtn.textContent = "Stop watching";
-    const phase = roomStatus === "finished" ? "Waiting for rematch" : "Waiting for opponent";
-    const matchup = names[1] ? `${names[0] || "?"} vs ${names[1]}` : names[0] || "?";
-    setStatus(`${phase}: ${matchup}`);
+    overlayEl.hidden = true;
+    setStatus(`Waiting for opponent: ${hostName || "?"}`);
   },
   onSpectateGameOver: (view, names, winnerIndex) => {
     state = view;
-    const summary = winnerIndex == null ? "Draw" : `${names[winnerIndex] || "?"} wins`;
-    setStatus(`Watching — ${summary}`);
+    playBtn.textContent = "Stop watching";
+    renderMpGameOver(
+      view,
+      names,
+      0,
+      winnerIndex,
+      null,
+      mpSpectateResultText(names, winnerIndex),
+    );
+    overlayEl.hidden = false;
+    guestFormEl.hidden = true;
+    playAgainEl.hidden = true;
+    playAgainWaitEl.hidden = true;
+    leaveRoomEl.hidden = true;
+    setGoSaveStatus(null);
+    setStatus(`Watching — ${mpSpectateResultText(names, winnerIndex)}`);
   },
   onSpectateEnded: (reason) => {
     spectating = false;
     state = null;
     screen = "multiplayer";
     playBtn.textContent = "Play";
+    overlayEl.hidden = true;
     setStatus(reason);
     mpPageEl.hidden = false;
   },
@@ -1134,10 +1162,11 @@ function renderMpGameOver(
   youIndex: number,
   winnerIndex: number | null,
   elo: { before: number; after: number; delta: number } | null,
+  resultText: string,
 ): void {
   goScoreEl.hidden = true;
   goMpSummaryEl.hidden = false;
-  goMpResultEl.textContent = mpResultText(names, youIndex, winnerIndex);
+  goMpResultEl.textContent = resultText;
 
   const youWins = winnerIndex !== null && winnerIndex === youIndex;
   const oppWins = winnerIndex !== null && winnerIndex !== youIndex;
@@ -1280,6 +1309,20 @@ function formatTopOrBottom(rank: number, total: number): string {
 }
 
 /**
+ * Leaves the current multiplayer room entirely (from the ready screen or
+ * the game-over screen) and returns to the main menu.
+ */
+function leaveMultiplayerRoom(): void {
+  mpLobby.close();
+  mpPlaying = false;
+  spectating = false;
+  screen = "menu";
+  playBtn.textContent = "Play";
+  hideGameOverOverlay();
+  setStatus("Left multiplayer match");
+}
+
+/**
  * Requests a multiplayer rematch, if we're on a finished MP match's
  * game-over screen. Swaps the Play again button for a "waiting" line.
  *
@@ -1309,6 +1352,7 @@ function startGame(): void {
     spectating = false;
     screen = "menu";
     playBtn.textContent = "Play";
+    hideGameOverOverlay();
     setStatus(wasSpectating ? "Stopped watching" : "Left multiplayer match");
     return;
   }
@@ -1442,6 +1486,12 @@ function onKeyDown(event: KeyboardEvent): void {
     if (screen === "gameover" && !leaveRoomEl.hidden) {
       event.preventDefault();
       leaveRoomEl.click();
+    } else {
+      const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+      if (readyOverlay && !readyOverlay.hidden) {
+        event.preventDefault();
+        mpReadyLeaveEl.click();
+      }
     }
     return;
   }
@@ -1567,15 +1617,8 @@ playAgainEl.addEventListener("click", () => {
   startGame();
 });
 
-leaveRoomEl.addEventListener("click", () => {
-  mpLobby.close();
-  mpPlaying = false;
-  spectating = false;
-  screen = "menu";
-  playBtn.textContent = "Play";
-  hideGameOverOverlay();
-  setStatus("Left multiplayer match");
-});
+leaveRoomEl.addEventListener("click", leaveMultiplayerRoom);
+mpReadyLeaveEl.addEventListener("click", leaveMultiplayerRoom);
 
 guestFormEl.addEventListener("submit", (event) => {
   event.preventDefault();

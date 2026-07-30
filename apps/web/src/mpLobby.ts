@@ -63,14 +63,10 @@ export interface MpUiHooks {
     status: RoomSnapshot["status"],
   ) => void;
   /**
-   * Spectating a room with no live game yet — still waiting for a second
-   * player ("waiting"), or between matches waiting for a rematch ("finished").
+   * Spectating a room that's still waiting for a second player — no live
+   * game exists yet.
    */
-  onSpectateWaiting: (
-    sizeId: FieldSizeId,
-    names: [string, string],
-    status: RoomSnapshot["status"],
-  ) => void;
+  onSpectateWaiting: (sizeId: FieldSizeId, hostName: string) => void;
   onSpectateGameOver: (
     state: GameState,
     names: [string, string],
@@ -402,11 +398,18 @@ export class MpLobbyController {
   ): void {
     const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
     const title = document.querySelector<HTMLElement>("#mp-spectate-title");
+    const label = overlay?.querySelector<HTMLElement>(".mp-ready-label") ?? null;
     const queueText = document.querySelector<HTMLElement>("#mp-spectate-queue");
     if (!overlay) {
       return;
     }
     overlay.hidden = false;
+    // A live match exists again — undo the "game hasn't started yet" state
+    // (onSpectateWaiting hides the queue-toggle label since it isn't
+    // actionable before a real game exists).
+    if (label) {
+      label.hidden = false;
+    }
     if (title) {
       const phase =
         status === "readying"
@@ -454,13 +457,15 @@ export class MpLobbyController {
           this.updateRematchStatus(msg.room);
         }
         if (msg.room.status === "waiting" && this.pregameShown) {
+          // Opponent left before the match started — go back to "waiting for
+          // opponent" instead of revealing the room browser next to the game
+          // shell (that stacked the two screens side by side).
           this.pregameShown = false;
-          this.awaitingOpponent = false;
+          this.awaitingOpponent = true;
           this.clearCountdownUi();
           this.hooks.hideReadyOverlay();
-          this.hooks.onMatchPlaying(false);
-          this.setMatchUi(false);
-          this.root.hidden = false;
+          this.hooks.onWaitingForOpponent(msg.room.code, msg.room.sizeId);
+          this.setMatchUi(true);
         } else if (
           msg.room.status === "waiting" &&
           this.awaitingOpponent &&
@@ -468,17 +473,14 @@ export class MpLobbyController {
         ) {
           // Room actually created (or code confirmed) — refresh the code now known.
           this.hooks.onWaitingForOpponent(msg.room.code, msg.room.sizeId);
-        } else if (
-          this.spectating &&
-          (msg.room.status === "waiting" || msg.room.status === "finished")
-        ) {
-          // No live game yet (no opponent seated, or match just ended) — the
-          // server won't send spectate_state until one exists, so this "room"
-          // reply is the only signal we get to show something.
-          const bySeat = (i: number): string =>
-            msg.room.players.find((p) => p.index === i)?.displayName ?? "";
-          const names: [string, string] = [bySeat(0), bySeat(1)];
-          this.hooks.onSpectateWaiting(msg.room.sizeId, names, msg.room.status);
+        } else if (this.spectating && msg.room.status === "waiting") {
+          // No live game yet (still just the host) — the server won't send
+          // spectate_state until one exists, so this "room" reply is the
+          // only signal we get to show something. "finished" rooms are
+          // deliberately not handled here — that would clobber the final
+          // scoreboard just shown via spectate_game_over.
+          const host = msg.room.players.find((p) => p.index === 0)?.displayName ?? "";
+          this.hooks.onSpectateWaiting(msg.room.sizeId, host);
           this.setMatchUi(true);
         }
         break;
@@ -560,6 +562,7 @@ export class MpLobbyController {
         break;
       }
       case "spectate_game_over": {
+        this.hideSpectateOverlay();
         this.hooks.onSpectateGameOver(msg.state, msg.names, msg.winnerIndex);
         break;
       }
@@ -795,6 +798,23 @@ export function mpResultText(
     return "You win";
   }
   return `${names[winnerIndex] || "Opponent"} wins`;
+}
+
+/**
+ * "Draw" / "{name} wins" summary line for a spectator (no "you" perspective).
+ *
+ * @param names - Absolute seat display names.
+ * @param winnerIndex - Absolute winner seat or null (draw).
+ * @returns Result line.
+ */
+export function mpSpectateResultText(
+  names: [string, string],
+  winnerIndex: number | null,
+): string {
+  if (winnerIndex === null) {
+    return "Draw";
+  }
+  return `${names[winnerIndex] || "Player " + (winnerIndex + 1)} wins`;
 }
 
 /**
