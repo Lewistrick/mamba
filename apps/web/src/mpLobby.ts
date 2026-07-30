@@ -53,6 +53,11 @@ export interface MpUiHooks {
   ) => void;
   onMatchPlaying: (playing: boolean) => void;
   hideReadyOverlay: () => void;
+  /**
+   * Shows the game shell in a "waiting for opponent" state right after
+   * creating a room. `code` is null for the initial (pre-server-ack) call.
+   */
+  onWaitingForOpponent: (code: string | null, sizeId: FieldSizeId) => void;
   onSpectateState: (
     state: GameState,
     names: [string, string],
@@ -80,6 +85,8 @@ export class MpLobbyController {
   private expectRematchPregame = false;
   private spectating = false;
   private queued = false;
+  /** True from room creation until an opponent seats (pregame) or we leave. */
+  private awaitingOpponent = false;
 
   /**
    * @param root - #mp-page element.
@@ -234,6 +241,7 @@ export class MpLobbyController {
     this.pregameShown = false;
     this.spectating = false;
     this.queued = false;
+    this.awaitingOpponent = false;
     this.hideSpectateOverlay();
     this.hooks.hideReadyOverlay();
     this.client?.leave();
@@ -289,7 +297,16 @@ export class MpLobbyController {
       if (!this.client?.connected) {
         return;
       }
-      this.client.createRoom(this.selectedSize(), this.selectedVisibility());
+      const sizeId = this.selectedSize();
+      this.client.createRoom(sizeId, this.selectedVisibility());
+      this.pregameShown = false;
+      this.spectating = false;
+      this.queued = false;
+      this.awaitingOpponent = true;
+      this.hideSpectateOverlay();
+      this.hooks.hideReadyOverlay();
+      this.hooks.onWaitingForOpponent(null, sizeId);
+      this.setMatchUi(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create room";
       if (status) {
@@ -421,11 +438,19 @@ export class MpLobbyController {
         }
         if (msg.room.status === "waiting" && this.pregameShown) {
           this.pregameShown = false;
+          this.awaitingOpponent = false;
           this.clearCountdownUi();
           this.hooks.hideReadyOverlay();
           this.hooks.onMatchPlaying(false);
           this.setMatchUi(false);
           this.root.hidden = false;
+        } else if (
+          msg.room.status === "waiting" &&
+          this.awaitingOpponent &&
+          !this.spectating
+        ) {
+          // Room actually created (or code confirmed) — refresh the code now known.
+          this.hooks.onWaitingForOpponent(msg.room.code, msg.room.sizeId);
         }
         break;
       case "public_rooms":
@@ -436,6 +461,7 @@ export class MpLobbyController {
         // spectators) — drop any spectator UI left over from watching.
         this.spectating = false;
         this.queued = false;
+        this.awaitingOpponent = false;
         this.hideSpectateOverlay();
         const view = remapStateForYou(msg.state, msg.youIndex);
         if (!this.pregameShown) {
@@ -553,6 +579,7 @@ export class MpLobbyController {
   ): void {
     const overlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
     const joined = document.querySelector<HTMLElement>("#mp-ready-joined");
+    const codeEl = document.querySelector<HTMLElement>("#mp-ready-code");
     const peer = document.querySelector<HTMLElement>("#mp-ready-peer");
     const toggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
     const label = document.querySelector<HTMLElement>(".mp-ready-label");
@@ -561,6 +588,10 @@ export class MpLobbyController {
       return;
     }
     overlay.hidden = false;
+    // Both seats are filled now — the "share this code" step is done.
+    if (codeEl) {
+      codeEl.hidden = true;
+    }
     const oppName = names[1 - youIndex] || "Opponent";
     if (joined) {
       joined.textContent = `${oppName} joined the room`;

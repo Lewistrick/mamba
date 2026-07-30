@@ -295,6 +295,48 @@ const mpLobby = new MpLobbyController(mpPageEl, {
       toggle.checked = false;
       toggle.disabled = false;
     }
+    const codeEl = document.querySelector<HTMLElement>("#mp-ready-code");
+    if (codeEl) {
+      codeEl.hidden = true;
+    }
+  },
+  onWaitingForOpponent: (code, sizeId) => {
+    state = placeholderState(FIELD_SIZES[sizeId]);
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = true;
+    mpPlaying = true;
+    playBtn.textContent = "Leave match";
+    setStatus(
+      code
+        ? `Waiting for opponent — room code ${code}`
+        : "Creating room — waiting for opponent…",
+    );
+
+    // Reuse the ready overlay to show the shareable room code — the ready
+    // checkbox stays hidden until an opponent is actually seated.
+    const overlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    const joined = document.querySelector<HTMLElement>("#mp-ready-joined");
+    const codeEl = document.querySelector<HTMLElement>("#mp-ready-code");
+    const label = document.querySelector<HTMLElement>(".mp-ready-label");
+    const peer = document.querySelector<HTMLElement>("#mp-ready-peer");
+    if (overlay) {
+      overlay.hidden = false;
+    }
+    if (label) {
+      label.hidden = true;
+    }
+    if (peer) {
+      peer.textContent = "";
+    }
+    if (joined) {
+      joined.textContent = "Waiting for an opponent to join…";
+    }
+    if (codeEl) {
+      codeEl.hidden = code === null;
+      codeEl.textContent = code ? `Room code: ${code}` : "";
+    }
   },
   onPregame: (view) => {
     state = view;
@@ -426,6 +468,53 @@ function syncMenuFromSettings(): void {
   sounds.setMuted(!settings.soundEnabled);
   guestNameEl.value = settings.playerName;
   scopeSelect.value = settings.leaderboardScope;
+}
+
+/**
+ * Empty placeholder board for screens with no live game yet (menu preview,
+ * waiting for a multiplayer opponent).
+ *
+ * @param size - Field dimensions.
+ * @returns Static empty-field state.
+ */
+function placeholderState(size: { width: number; height: number }): GameState {
+  return {
+    width: size.width,
+    height: size.height,
+    players: [
+      {
+        body: [],
+        direction: "Right",
+        score: 0,
+        survivalScore: 0,
+        winBonus: 0,
+        level: 1,
+        pelletsEatenThisLife: 0,
+        moltThreshold: 0,
+        alive: true,
+        blueValue: 1,
+        greenValue: 10,
+      },
+    ],
+    snake: [],
+    direction: "Right",
+    walls: [],
+    bluePellets: [],
+    greenPellets: [],
+    yellowPellet: null,
+    score: 0,
+    survivalScore: 0,
+    winBonus: 0,
+    level: 1,
+    pelletsEatenThisLife: 0,
+    moltThreshold: 0,
+    netScore: 0,
+    status: "playing",
+    tick: 0,
+    blueValue: 1,
+    greenValue: 10,
+    events: [],
+  };
 }
 
 /**
@@ -1341,45 +1430,7 @@ function frame(now: number): void {
   }
 
   const previewSize = FIELD_SIZES[selectedSizeId()];
-  const drawState =
-    state ??
-    ({
-      width: previewSize.width,
-      height: previewSize.height,
-      players: [
-        {
-          body: [],
-          direction: "Right",
-          score: 0,
-          survivalScore: 0,
-          winBonus: 0,
-          level: 1,
-          pelletsEatenThisLife: 0,
-          moltThreshold: 0,
-          alive: true,
-          blueValue: 1,
-          greenValue: 10,
-        },
-      ],
-      snake: [],
-      direction: "Right",
-      walls: [],
-      bluePellets: [],
-      greenPellets: [],
-      yellowPellet: null,
-      score: 0,
-      survivalScore: 0,
-      winBonus: 0,
-      level: 1,
-      pelletsEatenThisLife: 0,
-      moltThreshold: 0,
-      netScore: 0,
-      status: "playing",
-      tick: 0,
-      blueValue: 1,
-      greenValue: 10,
-      events: [],
-    } satisfies GameState);
+  const drawState = state ?? placeholderState(previewSize);
 
   // HTML overlay owns the interactive game-over UI; skip canvas text overlay then.
   const overlay =
