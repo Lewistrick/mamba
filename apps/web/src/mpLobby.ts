@@ -695,7 +695,7 @@ export class MpLobbyController {
       if (r.status === "waiting") {
         const joinBtn = document.createElement("button");
         joinBtn.type = "button";
-        joinBtn.className = "text-btn";
+        joinBtn.className = "mp-room-btn";
         joinBtn.textContent = "Join";
         joinBtn.addEventListener("click", () => {
           this.client?.joinRoom(r.code);
@@ -704,7 +704,7 @@ export class MpLobbyController {
       }
       const watchBtn = document.createElement("button");
       watchBtn.type = "button";
-      watchBtn.className = "text-btn";
+      watchBtn.className = "mp-room-btn";
       watchBtn.textContent = "Watch";
       watchBtn.addEventListener("click", () => {
         void this.watch(r.code);

@@ -581,6 +581,37 @@ body {
   gap: 0.35rem;
 }
 
+.mp-public-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  background: #0d1428;
+}
+
+.mp-public-list li span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mp-room-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #152038;
+  color: var(--accent-yellow);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.mp-room-btn:hover {
+  filter: brightness(1.08);
+}
+
 
 .profile-header {
   display: flex;

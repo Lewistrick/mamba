@@ -123,6 +123,10 @@ function handleGameOver(room: Room, state: GameState): void {
  * @param state - Final state.
  */
 async function handleGameOverAsync(room: Room, state: GameState): Promise<void> {
+  // Clients cache the last "room" snapshot to gate the rematch button — without
+  // this, room.status stays at its pre-match value ("countdown") forever, so
+  // canRematch never flips true and "Play again" falls through to a local game.
+  broadcastRoom(room);
   const names = rooms.names(room);
   const winnerIndex = RoomManager.winnerIndex(state);
   for (const spec of room.spectators) {

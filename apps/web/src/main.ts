@@ -1245,10 +1245,29 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === "Escape") {
+    if (screen === "gameover" && !leaveRoomEl.hidden) {
+      event.preventDefault();
+      leaveRoomEl.click();
+    }
+    return;
+  }
+
   if (event.key === "Enter" || event.key === " ") {
     if (screen !== "playing") {
       event.preventDefault();
       startGame();
+    }
+    return;
+  }
+
+  if (event.key === "r" || event.key === "R") {
+    const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    if (readyOverlay && !readyOverlay.hidden && readyToggle && !readyToggle.disabled) {
+      event.preventDefault();
+      readyToggle.checked = !readyToggle.checked;
+      readyToggle.dispatchEvent(new Event("change"));
     }
     return;
   }
