@@ -34,8 +34,13 @@ import {
   type StatSortKey,
 } from "./profileStats.ts";
 import { Renderer } from "./renderer.ts";
-import { gameOverScoreLines } from "./scoreBreakdown.ts";
-import { MpLobbyController, hideLobbyForMatchOver, mpGameOverText } from "./mpLobby.ts";
+import { gameOverScoreLines, mpScoreTable } from "./scoreBreakdown.ts";
+import {
+  MpLobbyController,
+  hideLobbyForMatchOver,
+  mpEloText,
+  mpResultText,
+} from "./mpLobby.ts";
 import {
   loadSettings,
   playModeKey,
@@ -112,10 +117,15 @@ const profileBtn = document.querySelector<HTMLButtonElement>("#btn-profile");
 const signOutBtn = document.querySelector<HTMLButtonElement>("#btn-sign-out");
 const gameoverOverlay = document.querySelector<HTMLElement>("#gameover-overlay");
 const goScore = document.querySelector<HTMLElement>("#go-score");
+const goMpSummary = document.querySelector<HTMLElement>("#go-mp-summary");
+const goMpResult = document.querySelector<HTMLElement>("#go-mp-result");
+const goMpTable = document.querySelector<HTMLTableElement>("#go-mp-table");
+const goMpElo = document.querySelector<HTMLElement>("#go-mp-elo");
 const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
 const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
+const playAgainWait = document.querySelector<HTMLElement>("#go-play-again-wait");
 const leaveRoomBtn = document.querySelector<HTMLButtonElement>("#btn-leave-room");
 const helpBtn = document.querySelector<HTMLButtonElement>("#btn-help");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
@@ -168,10 +178,15 @@ if (
   !signOutBtn ||
   !gameoverOverlay ||
   !goScore ||
+  !goMpSummary ||
+  !goMpResult ||
+  !goMpTable ||
+  !goMpElo ||
   !goSaveStatus ||
   !guestScoreForm ||
   !guestNameInput ||
   !playAgainBtn ||
+  !playAgainWait ||
   !leaveRoomBtn ||
   !helpBtn ||
   !gameShell ||
@@ -222,10 +237,15 @@ const profileBtnEl = profileBtn;
 const signOutEl = signOutBtn;
 const overlayEl = gameoverOverlay;
 const goScoreEl = goScore;
+const goMpSummaryEl = goMpSummary;
+const goMpResultEl = goMpResult;
+const goMpTableEl = goMpTable;
+const goMpEloEl = goMpElo;
 const goSaveStatusEl = goSaveStatus;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
+const playAgainWaitEl = playAgainWait;
 const leaveRoomEl = leaveRoomBtn;
 const helpBtnEl = helpBtn;
 const gameShellEl = gameShell;
@@ -376,18 +396,11 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     // Stay on the game shell with the overlay — do not reveal #mp-page
     // beside it (that stacked the lobby next to GAME OVER).
     hideLobbyForMatchOver(mpPageEl);
-    const text = mpGameOverText(
-      view,
-      names,
-      youIndex,
-      winnerIndex,
-      elo?.you ?? null,
-    );
-    goScoreEl.textContent = text;
+    renderMpGameOver(view, names, youIndex, winnerIndex, elo?.you ?? null);
     overlayEl.hidden = false;
     guestFormEl.hidden = true;
     leaveRoomEl.hidden = false;
-    setGoSaveStatus("Saved to local scores (mode: mp)", "ok");
+    setGoSaveStatus(null);
     setStatus(
       winnerIndex === youIndex
         ? "You win"
@@ -1054,6 +1067,10 @@ function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
   guestFormEl.hidden = true;
   leaveRoomEl.hidden = true;
+  playAgainEl.hidden = false;
+  playAgainWaitEl.hidden = true;
+  goMpSummaryEl.hidden = true;
+  goScoreEl.hidden = false;
   setGoSaveStatus(null);
   pendingScore = null;
   scoreSaved = false;
@@ -1073,6 +1090,8 @@ function showGameOverOverlay(
   scoreSaved = false;
   overlayEl.hidden = false;
   leaveRoomEl.hidden = true;
+  goMpSummaryEl.hidden = true;
+  goScoreEl.hidden = false;
   goScoreEl.textContent = `Score: ${pending.score}`;
   if (mode === "guest") {
     setGoSaveStatus(null);
@@ -1084,6 +1103,62 @@ function showGameOverOverlay(
     guestFormEl.hidden = true;
     setGoSaveStatus("Saving score…", "pending");
   }
+}
+
+/**
+ * Populates the MP game-over table (level/score/time/win/net per player,
+ * winner column in green) plus the result and Elo lines.
+ *
+ * @param view - Remapped final state (player 0 = local "you").
+ * @param names - Absolute seat display names.
+ * @param youIndex - Local absolute seat.
+ * @param winnerIndex - Absolute winner seat, or null for a draw.
+ * @param elo - Elo change for the local player, if applicable.
+ */
+function renderMpGameOver(
+  view: GameState,
+  names: [string, string],
+  youIndex: number,
+  winnerIndex: number | null,
+  elo: { before: number; after: number; delta: number } | null,
+): void {
+  goScoreEl.hidden = true;
+  goMpSummaryEl.hidden = false;
+  goMpResultEl.textContent = mpResultText(names, youIndex, winnerIndex);
+
+  const youWins = winnerIndex !== null && winnerIndex === youIndex;
+  const oppWins = winnerIndex !== null && winnerIndex !== youIndex;
+  const { youName, oppName, rows } = mpScoreTable(view, names, youIndex);
+
+  goMpTableEl.replaceChildren();
+  const headRow = document.createElement("tr");
+  headRow.append(document.createElement("th"));
+  const youHeadCell = document.createElement("th");
+  youHeadCell.textContent = youName;
+  youHeadCell.classList.toggle("winner", youWins);
+  const oppHeadCell = document.createElement("th");
+  oppHeadCell.textContent = oppName;
+  oppHeadCell.classList.toggle("winner", oppWins);
+  headRow.append(youHeadCell, oppHeadCell);
+  goMpTableEl.append(headRow);
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const labelCell = document.createElement("td");
+    labelCell.textContent = row.label;
+    const youCell = document.createElement("td");
+    youCell.textContent = String(row.you);
+    youCell.classList.toggle("winner", youWins);
+    const oppCell = document.createElement("td");
+    oppCell.textContent = String(row.opp);
+    oppCell.classList.toggle("winner", oppWins);
+    tr.append(labelCell, youCell, oppCell);
+    goMpTableEl.append(tr);
+  }
+
+  const eloLine = mpEloText(elo);
+  goMpEloEl.hidden = eloLine === null;
+  goMpEloEl.textContent = eloLine ?? "";
 }
 
 /**
@@ -1192,10 +1267,26 @@ function formatTopOrBottom(rank: number, total: number): string {
 }
 
 /**
+ * Requests a multiplayer rematch, if we're on a finished MP match's
+ * game-over screen. Swaps the Play again button for a "waiting" line.
+ *
+ * @returns True when a rematch request was sent (caller should not start solo).
+ */
+function requestRematch(): boolean {
+  if (!mpLobby.requestPlayAgain()) {
+    return false;
+  }
+  playAgainEl.hidden = true;
+  playAgainWaitEl.hidden = false;
+  playAgainWaitEl.textContent = "You're ready — waiting for opponent…";
+  return true;
+}
+
+/**
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
-  if (mpLobby.requestPlayAgain()) {
+  if (requestRematch()) {
     return;
   }
   if (mpPlaying || spectating) {
@@ -1433,8 +1524,10 @@ function frame(now: number): void {
   const drawState = state ?? placeholderState(previewSize);
 
   // HTML overlay owns the interactive game-over UI; skip canvas text overlay then.
+  // MP pregame/countdown/waiting also set paused=true, but that's covered by
+  // the #mp-ready-overlay HTML, not the canvas "PAUSED" text.
   const overlay =
-    screen === "playing" && paused
+    screen === "playing" && paused && !mpPlaying
       ? "paused"
       : screen === "gameover" && overlayEl.hidden
         ? "gameover"
@@ -1455,7 +1548,7 @@ multiplayerBtnEl.addEventListener("click", () => {
 });
 
 playAgainEl.addEventListener("click", () => {
-  if (mpLobby.requestPlayAgain()) {
+  if (requestRematch()) {
     return;
   }
   startGame();

@@ -14,7 +14,6 @@ import {
   type RoomVisibility,
 } from "./mpClient.ts";
 import { submitScore } from "./leaderboard.ts";
-import { gameOverScoreLines } from "./scoreBreakdown.ts";
 
 /**
  * Hides the multiplayer lobby after a match ends so GAME OVER can show alone
@@ -747,34 +746,38 @@ export class MpLobbyController {
 }
 
 /**
- * Formats an MP game-over summary including winner and Elo delta.
+ * "You win" / "Draw" / "{name} wins" summary line for the MP game-over screen.
  *
- * @param state - Remapped local view state.
- * @param names - Seat names.
+ * @param names - Absolute seat display names.
  * @param youIndex - Local seat.
- * @param winnerIndex - Absolute winner seat or null.
- * @param elo - Optional Elo change for the local player.
- * @returns Overlay text.
+ * @param winnerIndex - Absolute winner seat or null (draw).
+ * @returns Result line.
  */
-export function mpGameOverText(
-  state: GameState,
+export function mpResultText(
   names: [string, string],
   youIndex: number,
   winnerIndex: number | null,
-  elo: { before: number; after: number; delta: number } | null = null,
 ): string {
-  const lines = gameOverScoreLines(state, { opponentLabel: "Opp", fair: true });
-  let result: string;
   if (winnerIndex === null) {
-    result = "Draw";
-  } else if (winnerIndex === youIndex) {
-    result = "You win";
-  } else {
-    result = `${names[winnerIndex] || "Opponent"} wins`;
+    return "Draw";
   }
-  const eloLine =
-    elo == null
-      ? null
-      : `Elo ${elo.before} → ${elo.after} (${elo.delta >= 0 ? "+" : ""}${elo.delta})`;
-  return [result, ...lines, eloLine].filter(Boolean).join("\n");
+  if (winnerIndex === youIndex) {
+    return "You win";
+  }
+  return `${names[winnerIndex] || "Opponent"} wins`;
+}
+
+/**
+ * "Elo 1200 → 1215 (+15)" summary line for the MP game-over screen.
+ *
+ * @param elo - Elo change for the local player.
+ * @returns Formatted line, or null when no Elo change applies.
+ */
+export function mpEloText(
+  elo: { before: number; after: number; delta: number } | null,
+): string | null {
+  if (elo == null) {
+    return null;
+  }
+  return `Elo ${elo.before} → ${elo.after} (${elo.delta >= 0 ? "+" : ""}${elo.delta})`;
 }

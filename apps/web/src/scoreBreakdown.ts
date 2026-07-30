@@ -2,7 +2,7 @@
  * Game-over score breakdown lines for solo and versus overlays.
  */
 
-import { pelletScore, type GameState } from "@mamba/engine";
+import { pelletScore, versusNetScore, type GameState } from "@mamba/engine";
 
 /**
  * Builds aligned game-over score lines.
@@ -61,4 +61,47 @@ export function gameOverScoreLines(
   }
 
   return [`Score  ${state.score}`];
+}
+
+/** One row of the real-multiplayer game-over table. */
+export interface MpScoreRow {
+  label: string;
+  you: number;
+  opp: number;
+}
+
+/** Column names + row values for the real-multiplayer game-over table. */
+export interface MpScoreTable {
+  youName: string;
+  oppName: string;
+  rows: MpScoreRow[];
+}
+
+/**
+ * Structured level/score/bonus breakdown for the real-multiplayer game-over
+ * table (fair net: opponent pellets are never deducted, on either side).
+ *
+ * @param state - Remapped final state (player 0 = local "you").
+ * @param names - Absolute seat display names.
+ * @param youIndex - Local absolute seat.
+ * @returns Column names and row values.
+ */
+export function mpScoreTable(
+  state: GameState,
+  names: [string, string],
+  youIndex: number,
+): MpScoreTable {
+  const you = state.players[0];
+  const opp = state.players[1];
+  return {
+    youName: names[youIndex] || "You",
+    oppName: names[1 - youIndex] || "Opponent",
+    rows: [
+      { label: "Level", you: you.level, opp: opp.level },
+      { label: "Score", you: pelletScore(you), opp: pelletScore(opp) },
+      { label: "Time bonus", you: you.survivalScore, opp: opp.survivalScore },
+      { label: "Win bonus", you: you.winBonus, opp: opp.winBonus },
+      { label: "Net score", you: state.netScore, opp: versusNetScore(opp, you, true) },
+    ],
+  };
 }

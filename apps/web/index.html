@@ -106,6 +106,11 @@
                     <div id="gameover-overlay" class="gameover-overlay" hidden>
                         <p class="go-title">GAME OVER</p>
                         <pre id="go-score" class="go-score">Score: 0</pre>
+                        <div id="go-mp-summary" class="go-mp-summary" hidden>
+                            <p id="go-mp-result" class="go-mp-result"></p>
+                            <table id="go-mp-table" class="go-mp-table"></table>
+                            <p id="go-mp-elo" class="go-mp-elo" hidden></p>
+                        </div>
                         <p id="go-save-status" class="go-save-status" hidden></p>
                         <form id="guest-score-form" class="guest-score-form">
                             <label class="name-label">
@@ -115,8 +120,13 @@
                             </label>
                             <button type="submit" class="primary">Save score</button>
                         </form>
-                        <button type="button" id="btn-play-again" class="secondary">Play again</button>
-                        <button type="button" id="btn-leave-room" class="secondary" hidden>Leave room</button>
+                        <button type="button" id="btn-play-again" class="secondary go-action-btn">
+                            Play again<span class="go-hotkey">Enter</span>
+                        </button>
+                        <p id="go-play-again-wait" class="hint" hidden></p>
+                        <button type="button" id="btn-leave-room" class="secondary go-action-btn" hidden>
+                            Leave room<span class="go-hotkey">Esc</span>
+                        </button>
                     </div>
                 </div>
             </div>

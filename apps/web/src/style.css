@@ -6,6 +6,7 @@
   --accent-red: #c41e1e;
   --accent-yellow: #f0d000;
   --accent-blue: #3a8cff;
+  --accent-green: #2ee04a;
   --border: #1a2a4a;
 }
 
@@ -427,6 +428,76 @@ body {
 
 .go-save-status[data-kind="pending"] {
   color: var(--muted);
+}
+
+.go-mp-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.go-mp-summary[hidden] {
+  display: none;
+}
+
+.go-mp-result {
+  margin: 0;
+  color: var(--accent-yellow);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.go-mp-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.go-mp-table th,
+.go-mp-table td {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  text-align: right;
+}
+
+.go-mp-table th:first-child,
+.go-mp-table td:first-child {
+  text-align: left;
+  color: var(--muted);
+}
+
+.go-mp-table th {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.go-mp-table td.winner,
+.go-mp-table th.winner {
+  color: var(--accent-green);
+}
+
+.go-mp-elo {
+  margin: 0;
+  color: var(--accent-blue);
+  font-size: 0.9rem;
+}
+
+.go-mp-elo[hidden] {
+  display: none;
+}
+
+.go-action-btn {
+  min-width: 9.5rem;
+}
+
+.go-hotkey {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 0.04em;
 }
 
 .guest-score-form {

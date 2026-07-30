@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { GameState } from "@mamba/engine";
-import { gameOverScoreLines } from "./scoreBreakdown.ts";
+import { gameOverScoreLines, mpScoreTable } from "./scoreBreakdown.ts";
 
 function baseState(partial: Partial<GameState>): GameState {
   return {
@@ -194,5 +194,98 @@ describe("gameOverScoreLines", () => {
     expect(gameOverScoreLines(baseState({ score: 42, netScore: 42 }))).toEqual([
       "Score  42",
     ]);
+  });
+});
+
+describe("mpScoreTable", () => {
+  it("builds fair per-player rows without deducting the opponent's score", () => {
+    // you: pellets 16 + time 19 + win 200 = 235; opp: pellets 10 + time 19 = 29
+    const table = mpScoreTable(
+      baseState({
+        players: [
+          {
+            body: [],
+            direction: "Right",
+            score: 235,
+            survivalScore: 19,
+            winBonus: 200,
+            level: 3,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: true,
+            blueValue: 3,
+            greenValue: 30,
+          },
+          {
+            body: [],
+            direction: "Left",
+            score: 29,
+            survivalScore: 19,
+            winBonus: 0,
+            level: 2,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: false,
+            blueValue: 2,
+            greenValue: 20,
+          },
+        ],
+        score: 235,
+        survivalScore: 19,
+        winBonus: 200,
+        netScore: 235,
+      }),
+      ["Alice", "Bob"],
+      0,
+    );
+    expect(table.youName).toBe("Alice");
+    expect(table.oppName).toBe("Bob");
+    expect(table.rows).toEqual([
+      { label: "Level", you: 3, opp: 2 },
+      { label: "Score", you: 16, opp: 10 },
+      { label: "Time bonus", you: 19, opp: 19 },
+      { label: "Win bonus", you: 200, opp: 0 },
+      { label: "Net score", you: 235, opp: 29 },
+    ]);
+  });
+
+  it("maps names by absolute seat index and falls back when empty", () => {
+    const table = mpScoreTable(
+      baseState({
+        players: [
+          {
+            body: [],
+            direction: "Right",
+            score: 10,
+            survivalScore: 0,
+            winBonus: 0,
+            level: 1,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: true,
+            blueValue: 1,
+            greenValue: 10,
+          },
+          {
+            body: [],
+            direction: "Left",
+            score: 5,
+            survivalScore: 0,
+            winBonus: 0,
+            level: 1,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: false,
+            blueValue: 1,
+            greenValue: 10,
+          },
+        ],
+        netScore: 10,
+      }),
+      ["", "Bob"],
+      1,
+    );
+    expect(table.youName).toBe("Bob");
+    expect(table.oppName).toBe("Opponent");
   });
 });
