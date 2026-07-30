@@ -432,6 +432,19 @@ const mpLobby = new MpLobbyController(mpPageEl, {
           : "Watching";
     setStatus(`${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`);
   },
+  onSpectateWaiting: (sizeId, names, roomStatus) => {
+    spectating = true;
+    state = placeholderState(FIELD_SIZES[sizeId]);
+    game = null;
+    aiBrain = null;
+    screen = "playing";
+    paused = true;
+    mpPlaying = false;
+    playBtn.textContent = "Stop watching";
+    const phase = roomStatus === "finished" ? "Waiting for rematch" : "Waiting for opponent";
+    const matchup = names[1] ? `${names[0] || "?"} vs ${names[1]}` : names[0] || "?";
+    setStatus(`${phase}: ${matchup}`);
+  },
   onSpectateGameOver: (view, names, winnerIndex) => {
     state = view;
     const summary = winnerIndex == null ? "Draw" : `${names[winnerIndex] || "?"} wins`;
@@ -1385,7 +1398,7 @@ function onGameOver(final: GameState, run: Game): void {
  * Toggles pause while a run is in progress.
  */
 function togglePause(): void {
-  if (mpPlaying || screen !== "playing") {
+  if (mpPlaying || spectating || screen !== "playing") {
     return;
   }
   paused = !paused;
@@ -1524,10 +1537,10 @@ function frame(now: number): void {
   const drawState = state ?? placeholderState(previewSize);
 
   // HTML overlay owns the interactive game-over UI; skip canvas text overlay then.
-  // MP pregame/countdown/waiting also set paused=true, but that's covered by
-  // the #mp-ready-overlay HTML, not the canvas "PAUSED" text.
+  // MP pregame/countdown/waiting/spectating also set paused=true, but those
+  // are covered by their own HTML overlays / status text, not "PAUSED".
   const overlay =
-    screen === "playing" && paused && !mpPlaying
+    screen === "playing" && paused && !mpPlaying && !spectating
       ? "paused"
       : screen === "gameover" && overlayEl.hidden
         ? "gameover"

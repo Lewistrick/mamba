@@ -62,6 +62,15 @@ export interface MpUiHooks {
     names: [string, string],
     status: RoomSnapshot["status"],
   ) => void;
+  /**
+   * Spectating a room with no live game yet — still waiting for a second
+   * player ("waiting"), or between matches waiting for a rematch ("finished").
+   */
+  onSpectateWaiting: (
+    sizeId: FieldSizeId,
+    names: [string, string],
+    status: RoomSnapshot["status"],
+  ) => void;
   onSpectateGameOver: (
     state: GameState,
     names: [string, string],
@@ -355,8 +364,13 @@ export class MpLobbyController {
       if (!this.client?.connected) {
         return;
       }
+      this.pregameShown = false;
+      this.awaitingOpponent = false;
+      this.queued = false;
+      this.spectating = true;
       this.client.spectate(code);
     } catch (err) {
+      this.spectating = false;
       const message = err instanceof Error ? err.message : "Could not watch room";
       if (status) {
         status.textContent = message;
@@ -428,6 +442,10 @@ export class MpLobbyController {
           status.textContent = msg.message;
         }
         this.hooks.setStatus(msg.message);
+        if (this.spectating && !this.room) {
+          // Spectate request failed before any room was confirmed.
+          this.spectating = false;
+        }
         break;
       case "room":
         this.room = msg.room;
@@ -450,6 +468,18 @@ export class MpLobbyController {
         ) {
           // Room actually created (or code confirmed) — refresh the code now known.
           this.hooks.onWaitingForOpponent(msg.room.code, msg.room.sizeId);
+        } else if (
+          this.spectating &&
+          (msg.room.status === "waiting" || msg.room.status === "finished")
+        ) {
+          // No live game yet (no opponent seated, or match just ended) — the
+          // server won't send spectate_state until one exists, so this "room"
+          // reply is the only signal we get to show something.
+          const bySeat = (i: number): string =>
+            msg.room.players.find((p) => p.index === i)?.displayName ?? "";
+          const names: [string, string] = [bySeat(0), bySeat(1)];
+          this.hooks.onSpectateWaiting(msg.room.sizeId, names, msg.room.status);
+          this.setMatchUi(true);
         }
         break;
       case "public_rooms":
