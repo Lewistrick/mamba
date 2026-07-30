@@ -59,6 +59,12 @@ export interface GameConfig {
   startLength?: number;
   /** 1 = solo, 2 = human vs AI (default 1). */
   playerCount?: 1 | 2;
+  /**
+   * Deterministic scoring/molt rules for real (human vs human) multiplayer,
+   * so outcomes depend on skill rather than RNG. AI and solo games leave
+   * this false. See {@link Game.versusHuman}.
+   */
+  fair?: boolean;
 }
 
 /** Immutable snapshot of engine state for rendering / networking. */

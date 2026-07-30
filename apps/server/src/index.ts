@@ -202,7 +202,7 @@ async function handleGameOverAsync(room: Room, state: GameState): Promise<void> 
       rows.push({
         userId: seat.user.userId,
         displayName: seat.user.displayName,
-        score: versusNetScore(player, opponent),
+        score: versusNetScore(player, opponent, true),
         level: player.level,
         sizeId: room.sizeId,
       });

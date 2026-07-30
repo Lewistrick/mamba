@@ -314,7 +314,7 @@ export function remapStateForYou(state: GameState, youIndex: number): GameState 
     survivalScore: you.survivalScore,
     winBonus: you.winBonus,
     level: you.level,
-    netScore: versusNetScore(you, opp),
+    netScore: versusNetScore(you, opp, true),
   };
 }
 

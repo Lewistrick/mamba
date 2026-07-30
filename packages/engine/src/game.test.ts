@@ -815,3 +815,86 @@ describe("Game", () => {
     expect(state.players[1].score).toBe(4);
   });
 });
+
+describe("fair (real multiplayer)", () => {
+  it("gives Game.versusHuman a fixed molt threshold of 20", () => {
+    const game = Game.versusHuman("small", 1);
+    const state = game.getState();
+    expect(state.players[0].moltThreshold).toBe(20);
+    expect(state.players[1].moltThreshold).toBe(20);
+  });
+
+  it("keeps Game.versusAi's random 12-22 molt threshold", () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const state = Game.versusAi("small", seed).getState();
+      expect(state.players[0].moltThreshold).toBeGreaterThanOrEqual(12);
+      expect(state.players[0].moltThreshold).toBeLessThanOrEqual(22);
+    }
+  });
+
+  it("resets the molt threshold to 20 after a fair molt", () => {
+    const game = Game.versusHuman("small", 1);
+    const g = game as unknown as {
+      players: Array<{
+        level: number;
+        pelletsEatenThisLife: number;
+        moltThreshold: number;
+      }>;
+      molt: (playerIndex: number) => void;
+    };
+    g.players[0].pelletsEatenThisLife = 20;
+    g.molt(0);
+    expect(g.players[0].moltThreshold).toBe(20);
+  });
+
+  it("spawns the lime pellet worth exactly sqrt(level) * 20 when fair", () => {
+    const game = Game.versusHuman("small", 1);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        alive: boolean;
+      }>;
+      yellowPellet: unknown;
+      spawnYellow: (level: number, molterIndex: number) => void;
+    };
+    g.yellowPellet = null;
+    g.spawnYellow(9, 0);
+    const yellow = game.getState().yellowPellet;
+    expect(yellow).not.toBeNull();
+    expect(yellow!.value).toBe(Math.floor(Math.sqrt(9) * 20));
+  });
+
+  it("keeps Game.versusAi's random 20-50 lime multiplier", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      yellowPellet: unknown;
+      spawnYellow: (level: number, molterIndex: number) => void;
+    };
+    g.yellowPellet = null;
+    g.spawnYellow(9, 0);
+    const yellow = game.getState().yellowPellet;
+    expect(yellow).not.toBeNull();
+    expect(yellow!.value).toBeGreaterThanOrEqual(Math.floor(Math.sqrt(9) * 20));
+    expect(yellow!.value).toBeLessThanOrEqual(Math.floor(Math.sqrt(9) * 50));
+  });
+
+  it("does not deduct the opponent's pellets from net score when fair", () => {
+    const game = Game.versusHuman("small", 1);
+    const g = game as unknown as {
+      players: Array<{ score: number; survivalScore: number; winBonus: number }>;
+    };
+    g.players[0].score = 50;
+    g.players[1].score = 1000;
+    expect(game.netScore()).toBe(50);
+  });
+
+  it("still deducts the opponent's pellets from net score vs AI", () => {
+    const game = Game.versusAi("small", 1);
+    const g = game as unknown as {
+      players: Array<{ score: number; survivalScore: number; winBonus: number }>;
+    };
+    g.players[0].score = 50;
+    g.players[1].score = 30;
+    expect(game.netScore()).toBe(20);
+  });
+});

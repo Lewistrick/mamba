@@ -488,7 +488,7 @@ export class MpLobbyController {
         if (you && opp) {
           submitScore({
             name: msg.names[msg.youIndex] || "You",
-            score: versusNetScore(you, opp),
+            score: versusNetScore(you, opp, true),
             level: you.level,
             sizeId: this.room?.sizeId ?? "medium",
             mode: "mp",
@@ -732,7 +732,7 @@ export function mpGameOverText(
   winnerIndex: number | null,
   elo: { before: number; after: number; delta: number } | null = null,
 ): string {
-  const lines = gameOverScoreLines(state, { opponentLabel: "Opp" });
+  const lines = gameOverScoreLines(state, { opponentLabel: "Opp", fair: true });
   let result: string;
   if (winnerIndex === null) {
     result = "Draw";

@@ -20,15 +20,17 @@ import { pelletScore, type GameState } from "@mamba/engine";
  * Solo: single score line (no time / win bonus).
  *
  * @param state - Final engine state (player 0 = local “you”).
- * @param options - Optional opponent label (default AI).
+ * @param options - Optional opponent label (default AI) and fair-mode flag
+ * (real multiplayer: opponent pellets shown for reference only, not deducted).
  * @returns Display lines.
  */
 export function gameOverScoreLines(
   state: GameState,
-  options?: { opponentLabel?: string },
+  options?: { opponentLabel?: string; fair?: boolean },
 ): string[] {
   if (state.players.length > 1) {
     const oppLabel = options?.opponentLabel ?? "AI";
+    const fair = options?.fair ?? false;
     const you = state.players[0];
     const opp = state.players[1];
     const time = you.survivalScore;
@@ -36,7 +38,7 @@ export function gameOverScoreLines(
     const yourPellets = pelletScore(you);
     const oppPellets = pelletScore(opp);
     const net = state.netScore;
-    const oppText = `-${oppPellets}`;
+    const oppText = fair ? String(oppPellets) : `-${oppPellets}`;
     const valueWidth = Math.max(
       String(yourPellets).length,
       oppText.length,

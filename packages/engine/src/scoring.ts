@@ -27,12 +27,16 @@ export function pelletScore(player: ScoreParts): number {
  *
  * @param you - Local / seat 0.
  * @param opponent - Seat 1.
+ * @param fair - Real multiplayer only: don't deduct the opponent's pellets at all.
  * @returns Net score.
  */
-export function versusNetScore(you: ScoreParts, opponent: ScoreParts): number {
-  return (
-    pelletScore(you) - pelletScore(opponent) + you.survivalScore + you.winBonus
-  );
+export function versusNetScore(
+  you: ScoreParts,
+  opponent: ScoreParts,
+  fair = false,
+): number {
+  const opponentPellets = fair ? 0 : pelletScore(opponent);
+  return pelletScore(you) - opponentPellets + you.survivalScore + you.winBonus;
 }
 
 /**
@@ -40,8 +44,14 @@ export function versusNetScore(you: ScoreParts, opponent: ScoreParts): number {
  *
  * @param you - Local player.
  * @param opponent - Opponent.
+ * @param fair - Real multiplayer only: don't deduct the opponent's pellets at all.
  * @returns HUD net.
  */
-export function versusHudNetScore(you: ScoreParts, opponent: ScoreParts): number {
-  return pelletScore(you) - pelletScore(opponent) + you.survivalScore;
+export function versusHudNetScore(
+  you: ScoreParts,
+  opponent: ScoreParts,
+  fair = false,
+): number {
+  const opponentPellets = fair ? 0 : pelletScore(opponent);
+  return pelletScore(you) - opponentPellets + you.survivalScore;
 }

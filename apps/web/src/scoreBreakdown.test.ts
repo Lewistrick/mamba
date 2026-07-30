@@ -141,6 +141,55 @@ describe("gameOverScoreLines", () => {
     expect(lines[5]).toContain("1620");
   });
 
+  it("shows opponent pellets without a minus sign when fair (real multiplayer)", () => {
+    // Fair net score doesn't deduct opponent pellets: net = 16 + 19 + 200 = 235
+    const lines = gameOverScoreLines(
+      baseState({
+        players: [
+          {
+            body: [],
+            direction: "Right",
+            score: 235,
+            survivalScore: 19,
+            winBonus: 200,
+            level: 2,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: true,
+            blueValue: 2,
+            greenValue: 20,
+          },
+          {
+            body: [],
+            direction: "Left",
+            score: 29,
+            survivalScore: 19,
+            winBonus: 0,
+            level: 2,
+            pelletsEatenThisLife: 0,
+            moltThreshold: 20,
+            alive: false,
+            blueValue: 2,
+            greenValue: 20,
+          },
+        ],
+        score: 235,
+        survivalScore: 19,
+        winBonus: 200,
+        netScore: 235,
+      }),
+      { opponentLabel: "Opp", fair: true },
+    );
+    expect(lines).toEqual([
+      "Your score   16",
+      "Opp score    10",
+      "Time bonus   19",
+      "Win bonus   200",
+      "--------------- +",
+      "Net score   235",
+    ]);
+  });
+
   it("formats solo as a single score line", () => {
     expect(gameOverScoreLines(baseState({ score: 42, netScore: 42 }))).toEqual([
       "Score  42",

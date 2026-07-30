@@ -1390,6 +1390,7 @@ function frame(now: number): void {
         : null;
   renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget(), {
     opponentLabel: aiBrain ? "AI" : "Opp",
+    fair: mpPlaying || spectating,
   });
   requestAnimationFrame(frame);
 }

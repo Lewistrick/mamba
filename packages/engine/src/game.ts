@@ -41,6 +41,12 @@ const DELTA: Record<Direction, Point> = {
 
 const DIRECTIONS: Direction[] = ["Up", "Down", "Left", "Right"];
 
+/** Fixed molt threshold for fair (real multiplayer) games — see {@link GameConfig.fair}. */
+const FAIR_MOLT_THRESHOLD = 20;
+
+/** Fixed lime-pellet value multiplier for fair (real multiplayer) games. */
+const FAIR_YELLOW_MULTIPLIER = 20;
+
 /** Mutable per-snake simulation state. */
 interface PlayerInternal {
   body: Point[];
@@ -129,6 +135,7 @@ export class Game {
   readonly height: number;
   readonly seed: number;
   readonly playerCount: 1 | 2;
+  private readonly fair: boolean;
 
   private readonly rng: () => number;
   private readonly players: PlayerInternal[] = [];
@@ -150,6 +157,7 @@ export class Game {
     this.height = config.height;
     this.seed = config.seed;
     this.playerCount = config.playerCount === 2 ? 2 : 1;
+    this.fair = config.fair ?? false;
     this.rng = createRng(config.seed);
     const length = config.startLength ?? START_LENGTH;
     this.initPlayers(length);
@@ -178,25 +186,28 @@ export class Game {
   }
 
   /**
-   * Creates a human-vs-human game for a named field size (same rules as vs AI).
+   * Creates a human-vs-human game for a named field size. Runs with `fair`
+   * rules (fixed molt threshold, fixed lime value, no opponent deduction) so
+   * real matches are decided by skill rather than RNG.
    *
    * @param sizeId - Small, medium, or large.
    * @param seed - Optional seed; defaults to a time-based value.
    * @returns A two-player game instance.
    */
   static versusHuman(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
-    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2 });
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2, fair: true });
   }
 
   /**
-   * Creates a human-vs-AI game for a named field size.
+   * Creates a human-vs-AI game for a named field size. Keeps the original
+   * RNG-driven rules (unlike {@link Game.versusHuman}).
    *
    * @param sizeId - Small, medium, or large.
    * @param seed - Optional seed; defaults to a time-based value.
    * @returns A two-player game instance.
    */
   static versusAi(sizeId: FieldSizeId, seed: number = Date.now() >>> 0): Game {
-    return Game.versusHuman(sizeId, seed);
+    return new Game({ ...FIELD_SIZES[sizeId], seed, playerCount: 2, fair: false });
   }
 
   /**
@@ -335,7 +346,7 @@ export class Game {
     if (this.players.length < 2) {
       return this.players[0].score;
     }
-    return versusNetScore(this.players[0], this.players[1]);
+    return versusNetScore(this.players[0], this.players[1], this.fair);
   }
 
   /**
@@ -427,7 +438,7 @@ export class Game {
       winBonus: 0,
       level: 1,
       pelletsEatenThisLife: 0,
-      moltThreshold: randomInt(this.rng, 12, 22),
+      moltThreshold: this.fair ? FAIR_MOLT_THRESHOLD : randomInt(this.rng, 12, 22),
       alive: true,
       replayHeadings: [],
     };
@@ -816,7 +827,9 @@ export class Game {
 
     player.level += 1;
     player.pelletsEatenThisLife = 0;
-    player.moltThreshold = randomInt(this.rng, 12, 22);
+    player.moltThreshold = this.fair
+      ? FAIR_MOLT_THRESHOLD
+      : randomInt(this.rng, 12, 22);
     this.events.push({ type: "molt", player: playerIndex });
     this.spawnYellow(player.level, playerIndex);
   }
@@ -839,7 +852,9 @@ export class Game {
       return;
     }
 
-    const multiplier = randomInt(this.rng, 20, 50);
+    const multiplier = this.fair
+      ? FAIR_YELLOW_MULTIPLIER
+      : randomInt(this.rng, 20, 50);
     const value = Math.floor(Math.sqrt(level) * multiplier);
 
     this.yellowPellet = {

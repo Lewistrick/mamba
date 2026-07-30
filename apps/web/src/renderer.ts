@@ -143,7 +143,7 @@ export class Renderer {
     state: GameState | null,
     overlay: "start" | "gameover" | "paused" | null = null,
     budget?: FitBudget,
-    options?: { opponentLabel?: string },
+    options?: { opponentLabel?: string; fair?: boolean },
   ): void {
     const width = state?.width ?? 40;
     const height = state?.height ?? 22;
@@ -155,11 +155,12 @@ export class Renderer {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     const opponentLabel = options?.opponentLabel ?? "AI";
+    const fair = options?.fair ?? false;
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, cssW, cssH);
 
-    this.drawHud(state, opponentLabel);
+    this.drawHud(state, opponentLabel, fair);
 
     if (state === null) {
       this.drawEmptyField(width, height);
@@ -170,9 +171,9 @@ export class Renderer {
     this.drawFooter();
 
     if (overlay === "paused") {
-      this.drawOverlay("paused", state, opponentLabel);
+      this.drawOverlay("paused", state, opponentLabel, fair);
     } else if (overlay === "gameover") {
-      this.drawOverlay("gameover", state, opponentLabel);
+      this.drawOverlay("gameover", state, opponentLabel, fair);
     }
   }
 
@@ -181,8 +182,9 @@ export class Renderer {
    *
    * @param state - Game state.
    * @param opponentLabel - Label for player 1 scores.
+   * @param fair - Real multiplayer: net score doesn't deduct opponent pellets.
    */
-  private drawHud(state: GameState | null, opponentLabel = "AI"): void {
+  private drawHud(state: GameState | null, opponentLabel = "AI", fair = false): void {
     const { ctx } = this;
     const { width: cssW } = this.logicalSize;
     ctx.fillStyle = COLORS.hudBar;
@@ -210,7 +212,7 @@ export class Renderer {
       const opp = state.players[1];
       const youPellets = pelletScore(you);
       const oppPellets = pelletScore(opp);
-      const hudNet = versusHudNetScore(you, opp);
+      const hudNet = versusHudNetScore(you, opp, fair);
       cursor = this.drawHudStat(cursor, cy, `Net : ${hudNet}`);
       cursor -= 8;
       cursor = this.drawHudStat(cursor, cy, `Time : ${timeBonus}`);
@@ -546,6 +548,7 @@ export class Renderer {
     kind: "gameover" | "paused",
     state: GameState | null,
     opponentLabel = "AI",
+    fair = false,
   ): void {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
@@ -568,7 +571,7 @@ export class Renderer {
       ctx.font = "16px 'IBM Plex Mono', monospace";
       ctx.fillStyle = COLORS.white;
       const lines = state
-        ? gameOverScoreLines(state, { opponentLabel })
+        ? gameOverScoreLines(state, { opponentLabel, fair })
         : ["Score  0"];
       let y = cy - 8;
       for (const line of lines) {
