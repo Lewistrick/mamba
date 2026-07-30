@@ -46,6 +46,12 @@ export interface RoomSnapshot {
   hostUserId: string;
   /** Spectators currently queued to take the next vacated seat. */
   joinQueueLength: number;
+  /**
+   * The recipient's own 0-based position in the join queue, or null if
+   * they're not queued (or not a spectator). Per-recipient — not shared
+   * across the broadcast the way the rest of this snapshot is.
+   */
+  yourQueuePosition: number | null;
 }
 
 /** Client → server. */

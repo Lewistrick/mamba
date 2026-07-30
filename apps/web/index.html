@@ -100,11 +100,6 @@
                     </div>
                     <div id="mp-spectate-overlay" class="mp-ready-overlay" hidden>
                         <p id="mp-spectate-title" class="mp-ready-joined"></p>
-                        <label class="mp-ready-label">
-                            <input id="mp-queue-toggle" type="checkbox" />
-                            Join if a seat opens
-                        </label>
-                        <p id="mp-spectate-queue" class="hint"></p>
                     </div>
                     <div id="gameover-overlay" class="gameover-overlay" hidden>
                         <p class="go-title">GAME OVER</p>
@@ -151,6 +146,32 @@
                 </div>
                 <ol id="lb-list" class="lb-list"></ol>
                 <p id="lb-empty" class="lb-empty">No scores yet</p>
+            </aside>
+
+            <aside id="mp-standings" class="leaderboard" aria-label="Multiplayer standings" hidden>
+                <div class="lb-header">
+                    <h2>Multiplayer</h2>
+                </div>
+                <div id="mp-standings-names" class="mp-standings-names">
+                    <span id="mp-standings-name-a"></span>
+                    <span class="mp-standings-vs">vs</span>
+                    <span id="mp-standings-name-b"></span>
+                </div>
+                <div class="mp-standings-wins">
+                    <span id="mp-standings-wins-a">0</span>
+                    <span class="hint">games won</span>
+                    <span id="mp-standings-wins-b">0</span>
+                </div>
+                <h3 class="mp-standings-subhead">Last game</h3>
+                <table id="mp-standings-table" class="go-mp-table" hidden></table>
+                <p id="mp-standings-empty" class="hint">No games finished yet</p>
+                <div id="mp-standings-queue" class="mp-standings-queue" hidden>
+                    <label class="mp-ready-label">
+                        <input id="mp-queue-toggle" type="checkbox" />
+                        Join if a seat opens
+                    </label>
+                    <p id="mp-spectate-queue" class="hint"></p>
+                </div>
             </aside>
         </div>
 

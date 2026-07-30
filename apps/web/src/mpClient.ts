@@ -28,6 +28,8 @@ export interface RoomSnapshot {
   hostUserId: string;
   /** Spectators currently queued to take the next vacated seat. */
   joinQueueLength: number;
+  /** This client's own 0-based position in the join queue, or null if not queued. */
+  yourQueuePosition: number | null;
 }
 
 /** Public lobby row. */

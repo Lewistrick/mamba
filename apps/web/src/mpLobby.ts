@@ -73,6 +73,15 @@ export interface MpUiHooks {
     winnerIndex: number | null,
   ) => void;
   onSpectateEnded: (reason: string) => void;
+  /** Player names + games-won tally for the current room session's standings panel. */
+  onStandings: (names: [string, string], wins: [number, number]) => void;
+  /**
+   * Spectator join-queue status line for the standings panel, or null to
+   * hide it (toggle off, or not queued).
+   */
+  onQueueInfo: (text: string | null) => void;
+  /** Fresh room entry (create/join/watch) — clear the standings panel's last-game table. */
+  onEnterRoom: () => void;
 }
 
 /**
@@ -91,6 +100,8 @@ export class MpLobbyController {
   private queued = false;
   /** True from room creation until an opponent seats (pregame) or we leave. */
   private awaitingOpponent = false;
+  /** Games won per absolute seat, for this room session only (not persisted). */
+  private wins: [number, number] = [0, 0];
 
   /**
    * @param root - #mp-page element.
@@ -244,7 +255,7 @@ export class MpLobbyController {
     this.clearCountdownUi();
     this.pregameShown = false;
     this.spectating = false;
-    this.queued = false;
+    this.resetQueueToggle();
     this.awaitingOpponent = false;
     this.hideSpectateOverlay();
     this.hooks.hideReadyOverlay();
@@ -305,8 +316,10 @@ export class MpLobbyController {
       this.client.createRoom(sizeId, this.selectedVisibility());
       this.pregameShown = false;
       this.spectating = false;
-      this.queued = false;
+      this.resetQueueToggle();
       this.awaitingOpponent = true;
+      this.wins = [0, 0];
+      this.hooks.onEnterRoom();
       this.hideSpectateOverlay();
       this.hooks.hideReadyOverlay();
       this.hooks.onWaitingForOpponent(null, sizeId);
@@ -329,6 +342,8 @@ export class MpLobbyController {
       }
       const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
       const code = input?.value.trim() ?? "";
+      this.wins = [0, 0];
+      this.hooks.onEnterRoom();
       this.client.joinRoom(code);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not join room";
@@ -362,8 +377,10 @@ export class MpLobbyController {
       }
       this.pregameShown = false;
       this.awaitingOpponent = false;
-      this.queued = false;
+      this.resetQueueToggle();
       this.spectating = true;
+      this.wins = [0, 0];
+      this.hooks.onEnterRoom();
       this.client.spectate(code);
     } catch (err) {
       this.spectating = false;
@@ -380,10 +397,40 @@ export class MpLobbyController {
     if (overlay) {
       overlay.hidden = true;
     }
+  }
+
+  /**
+   * Clears the join-queue toggle — used when leaving spectate mode entirely
+   * (not on game-over, where the queue preference should persist into the
+   * next match).
+   */
+  private resetQueueToggle(): void {
+    this.queued = false;
     const toggle = document.querySelector<HTMLInputElement>("#mp-queue-toggle");
     if (toggle) {
       toggle.checked = false;
     }
+    this.hooks.onQueueInfo(null);
+  }
+
+  /**
+   * Updates the join-queue status line for the standings panel.
+   */
+  private syncQueueInfo(): void {
+    if (!this.queued) {
+      this.hooks.onQueueInfo(null);
+      return;
+    }
+    const pos = this.room?.yourQueuePosition ?? null;
+    if (pos === null) {
+      this.hooks.onQueueInfo(null);
+      return;
+    }
+    this.hooks.onQueueInfo(
+      pos === 0
+        ? "You'll join if either player leaves."
+        : `${pos} spectator${pos === 1 ? "" : "s"} ahead of you.`,
+    );
   }
 
   /**
@@ -398,18 +445,10 @@ export class MpLobbyController {
   ): void {
     const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
     const title = document.querySelector<HTMLElement>("#mp-spectate-title");
-    const label = overlay?.querySelector<HTMLElement>(".mp-ready-label") ?? null;
-    const queueText = document.querySelector<HTMLElement>("#mp-spectate-queue");
     if (!overlay) {
       return;
     }
     overlay.hidden = false;
-    // A live match exists again — undo the "game hasn't started yet" state
-    // (onSpectateWaiting hides the queue-toggle label since it isn't
-    // actionable before a real game exists).
-    if (label) {
-      label.hidden = false;
-    }
     if (title) {
       const phase =
         status === "readying"
@@ -418,14 +457,6 @@ export class MpLobbyController {
             ? "Starting"
             : "Watching";
       title.textContent = `${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`;
-    }
-    if (queueText) {
-      const len = this.room?.joinQueueLength ?? 0;
-      queueText.textContent = this.queued
-        ? `You'll join automatically if a seat opens (${len} waiting)`
-        : len > 0
-          ? `${len} spectator${len === 1 ? "" : "s"} queued to join`
-          : "";
     }
   }
 
@@ -483,6 +514,7 @@ export class MpLobbyController {
           this.hooks.onSpectateWaiting(msg.room.sizeId, host);
           this.setMatchUi(true);
         }
+        this.syncQueueInfo();
         break;
       case "public_rooms":
         this.renderPublic(msg.rooms);
@@ -491,7 +523,7 @@ export class MpLobbyController {
         // Arriving here always means we're seated (including just-promoted
         // spectators) — drop any spectator UI left over from watching.
         this.spectating = false;
-        this.queued = false;
+        this.resetQueueToggle();
         this.awaitingOpponent = false;
         this.hideSpectateOverlay();
         const view = remapStateForYou(msg.state, msg.youIndex);
@@ -505,6 +537,7 @@ export class MpLobbyController {
         this.hooks.onPregame(view, msg.youIndex, msg.names, msg.ready);
         this.setMatchUi(true);
         this.syncReadyOverlay(msg.names, msg.youIndex, msg.ready, false);
+        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "countdown": {
@@ -514,6 +547,7 @@ export class MpLobbyController {
         this.setMatchUi(true);
         this.syncReadyOverlay(msg.names, msg.youIndex, [true, true], true);
         this.runCountdownUi();
+        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "state": {
@@ -522,6 +556,7 @@ export class MpLobbyController {
         this.hooks.hideReadyOverlay();
         this.hooks.onMatchState(view, msg.youIndex, msg.names);
         this.setMatchUi(true);
+        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "game_over": {
@@ -533,6 +568,9 @@ export class MpLobbyController {
         this.setMatchUi(false);
         // Keep lobby closed while GAME OVER shows on the game shell.
         hideLobbyForMatchOver(this.root);
+        if (msg.winnerIndex !== null) {
+          this.wins[msg.winnerIndex] += 1;
+        }
         this.hooks.onMatchOver(
           view,
           msg.youIndex,
@@ -540,6 +578,7 @@ export class MpLobbyController {
           msg.winnerIndex,
           msg.elo ?? null,
         );
+        this.hooks.onStandings(msg.names, this.wins);
         const you = msg.state.players[msg.youIndex];
         const opp = msg.state.players[1 - msg.youIndex];
         if (you && opp) {
@@ -559,16 +598,21 @@ export class MpLobbyController {
         this.setMatchUi(true);
         this.syncSpectateOverlay(msg.names, msg.status);
         this.hooks.onSpectateState(msg.state, msg.names, msg.status);
+        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "spectate_game_over": {
         this.hideSpectateOverlay();
+        if (msg.winnerIndex !== null) {
+          this.wins[msg.winnerIndex] += 1;
+        }
         this.hooks.onSpectateGameOver(msg.state, msg.names, msg.winnerIndex);
+        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "spectate_ended": {
         this.spectating = false;
-        this.queued = false;
+        this.resetQueueToggle();
         this.hideSpectateOverlay();
         this.setMatchUi(false);
         this.root.hidden = false;
@@ -582,12 +626,7 @@ export class MpLobbyController {
         if (toggle) {
           toggle.checked = msg.queued;
         }
-        if (this.room) {
-          this.syncSpectateOverlay(
-            this.room.players.map((p) => p.displayName) as [string, string],
-            this.room.status,
-          );
-        }
+        this.syncQueueInfo();
         break;
       }
       default:

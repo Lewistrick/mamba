@@ -331,9 +331,11 @@ export class RoomManager {
    * Builds a client room snapshot.
    *
    * @param room - Room.
+   * @param forUserId - Recipient's user id, to fill in their own queue
+   * position. Omit for snapshots not tied to one recipient (e.g. logging).
    * @returns Snapshot.
    */
-  snapshot(room: Room): RoomSnapshot {
+  snapshot(room: Room, forUserId?: string): RoomSnapshot {
     const players: RoomPlayerInfo[] = [];
     for (let i = 0; i < room.seats.length; i += 1) {
       const seat = room.seats[i];
@@ -348,6 +350,9 @@ export class RoomManager {
         rematchWanted: room.rematch[i] ?? false,
       });
     }
+    const queuePos = forUserId
+      ? room.joinQueue.findIndex((s) => s.user.userId === forUserId)
+      : -1;
     return {
       code: room.code,
       sizeId: room.sizeId,
@@ -357,6 +362,7 @@ export class RoomManager {
       players,
       hostUserId: room.hostUserId,
       joinQueueLength: room.joinQueue.length,
+      yourQueuePosition: queuePos >= 0 ? queuePos : null,
     };
   }
 

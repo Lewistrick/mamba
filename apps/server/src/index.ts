@@ -48,15 +48,14 @@ function sendMsg(send: (data: string) => void, msg: ServerMessage): void {
  * @param room - Room.
  */
 function broadcastRoom(room: Room): void {
-  const snap = rooms.snapshot(room);
   for (const seat of room.seats) {
     if (!seat) {
       continue;
     }
-    sendMsg(seat.send, { type: "room", room: snap });
+    sendMsg(seat.send, { type: "room", room: rooms.snapshot(room, seat.user.userId) });
   }
   for (const spec of room.spectators) {
-    sendMsg(spec.send, { type: "room", room: snap });
+    sendMsg(spec.send, { type: "room", room: rooms.snapshot(room, spec.user.userId) });
   }
 }
 
@@ -484,7 +483,7 @@ app.get(
                 reply({ type: "error", message: err });
                 return;
               }
-              reply({ type: "room", room: rooms.snapshot(room) });
+              reply({ type: "room", room: rooms.snapshot(room, seat.user.userId) });
               if (room.game) {
                 reply({
                   type: "spectate_state",

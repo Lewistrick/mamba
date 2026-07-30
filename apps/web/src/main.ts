@@ -98,6 +98,16 @@ const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
 const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
+const scoresPanel = document.querySelector<HTMLElement>("#scores");
+const mpStandingsPanel = document.querySelector<HTMLElement>("#mp-standings");
+const mpStandingsNameA = document.querySelector<HTMLElement>("#mp-standings-name-a");
+const mpStandingsNameB = document.querySelector<HTMLElement>("#mp-standings-name-b");
+const mpStandingsWinsA = document.querySelector<HTMLElement>("#mp-standings-wins-a");
+const mpStandingsWinsB = document.querySelector<HTMLElement>("#mp-standings-wins-b");
+const mpStandingsTable = document.querySelector<HTMLTableElement>("#mp-standings-table");
+const mpStandingsEmpty = document.querySelector<HTMLElement>("#mp-standings-empty");
+const mpStandingsQueue = document.querySelector<HTMLElement>("#mp-standings-queue");
+const mpSpectateQueueText = document.querySelector<HTMLElement>("#mp-spectate-queue");
 const aiDifficultyField = document.querySelector<HTMLElement>("#ai-difficulty-field");
 const playModeInputs = document.querySelectorAll<HTMLInputElement>('input[name="play-mode"]');
 const aiDifficultyInputs = document.querySelectorAll<HTMLInputElement>(
@@ -164,6 +174,16 @@ if (
   !lbScopeSelect ||
   !lbList ||
   !lbEmpty ||
+  !scoresPanel ||
+  !mpStandingsPanel ||
+  !mpStandingsNameA ||
+  !mpStandingsNameB ||
+  !mpStandingsWinsA ||
+  !mpStandingsWinsB ||
+  !mpStandingsTable ||
+  !mpStandingsEmpty ||
+  !mpStandingsQueue ||
+  !mpSpectateQueueText ||
   !aiDifficultyField ||
   !authPanel ||
   !authStatus ||
@@ -225,6 +245,16 @@ const periodSelect = lbPeriodSelect;
 const scopeSelect = lbScopeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
+const scoresPanelEl = scoresPanel;
+const mpStandingsPanelEl = mpStandingsPanel;
+const mpStandingsNameAEl = mpStandingsNameA;
+const mpStandingsNameBEl = mpStandingsNameB;
+const mpStandingsWinsAEl = mpStandingsWinsA;
+const mpStandingsWinsBEl = mpStandingsWinsB;
+const mpStandingsTableEl = mpStandingsTable;
+const mpStandingsEmptyEl = mpStandingsEmpty;
+const mpStandingsQueueEl = mpStandingsQueue;
+const mpSpectateQueueTextEl = mpSpectateQueueText;
 const aiDifficultyFieldEl = aiDifficultyField;
 const authEl = authPanel;
 const authStatusEl = authStatus;
@@ -457,6 +487,17 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     playBtn.textContent = "Stop watching";
     overlayEl.hidden = true;
     setStatus(`Waiting for opponent: ${hostName || "?"}`);
+
+    const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
+    const title = document.querySelector<HTMLElement>("#mp-spectate-title");
+    if (overlay) {
+      overlay.hidden = false;
+    }
+    if (title) {
+      title.textContent = hostName
+        ? `Game hasn't started yet — waiting for ${hostName}'s opponent`
+        : "Game hasn't started yet";
+    }
   },
   onSpectateGameOver: (view, names, winnerIndex) => {
     state = view;
@@ -485,6 +526,24 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     overlayEl.hidden = true;
     setStatus(reason);
     mpPageEl.hidden = false;
+  },
+  onStandings: (names, wins) => {
+    mpStandingsNameAEl.textContent = names[0] || "?";
+    mpStandingsNameBEl.textContent = names[1] || "?";
+    mpStandingsWinsAEl.textContent = String(wins[0]);
+    mpStandingsWinsBEl.textContent = String(wins[1]);
+  },
+  onQueueInfo: (text) => {
+    mpSpectateQueueTextEl.textContent = text ?? "";
+  },
+  onEnterRoom: () => {
+    mpStandingsTableEl.hidden = true;
+    mpStandingsTableEl.replaceChildren();
+    mpStandingsEmptyEl.hidden = false;
+    mpStandingsNameAEl.textContent = "";
+    mpStandingsNameBEl.textContent = "";
+    mpStandingsWinsAEl.textContent = "0";
+    mpStandingsWinsBEl.textContent = "0";
   },
 });
 
@@ -1156,6 +1215,53 @@ function showGameOverOverlay(
  * @param winnerIndex - Absolute winner seat, or null for a draw.
  * @param elo - Elo change for the local player, if applicable.
  */
+/**
+ * Fills a level/score/time/win/net table for two players, with the winner's
+ * column marked green. Shared by the Game Over overlay and the persistent
+ * multiplayer standings panel.
+ *
+ * @param tableEl - Target `<table>`.
+ * @param youName - Left player-column header.
+ * @param oppName - Right player-column header.
+ * @param rows - Row label + per-player values.
+ * @param youWins - Highlight the left column.
+ * @param oppWins - Highlight the right column.
+ */
+function buildScoreTable(
+  tableEl: HTMLTableElement,
+  youName: string,
+  oppName: string,
+  rows: { label: string; you: number; opp: number }[],
+  youWins: boolean,
+  oppWins: boolean,
+): void {
+  tableEl.replaceChildren();
+  const headRow = document.createElement("tr");
+  headRow.append(document.createElement("th"));
+  const youHeadCell = document.createElement("th");
+  youHeadCell.textContent = youName;
+  youHeadCell.classList.toggle("winner", youWins);
+  const oppHeadCell = document.createElement("th");
+  oppHeadCell.textContent = oppName;
+  oppHeadCell.classList.toggle("winner", oppWins);
+  headRow.append(youHeadCell, oppHeadCell);
+  tableEl.append(headRow);
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const labelCell = document.createElement("td");
+    labelCell.textContent = row.label;
+    const youCell = document.createElement("td");
+    youCell.textContent = String(row.you);
+    youCell.classList.toggle("winner", youWins);
+    const oppCell = document.createElement("td");
+    oppCell.textContent = String(row.opp);
+    oppCell.classList.toggle("winner", oppWins);
+    tr.append(labelCell, youCell, oppCell);
+    tableEl.append(tr);
+  }
+}
+
 function renderMpGameOver(
   view: GameState,
   names: [string, string],
@@ -1171,36 +1277,16 @@ function renderMpGameOver(
   const youWins = winnerIndex !== null && winnerIndex === youIndex;
   const oppWins = winnerIndex !== null && winnerIndex !== youIndex;
   const { youName, oppName, rows } = mpScoreTable(view, names, youIndex);
-
-  goMpTableEl.replaceChildren();
-  const headRow = document.createElement("tr");
-  headRow.append(document.createElement("th"));
-  const youHeadCell = document.createElement("th");
-  youHeadCell.textContent = youName;
-  youHeadCell.classList.toggle("winner", youWins);
-  const oppHeadCell = document.createElement("th");
-  oppHeadCell.textContent = oppName;
-  oppHeadCell.classList.toggle("winner", oppWins);
-  headRow.append(youHeadCell, oppHeadCell);
-  goMpTableEl.append(headRow);
-
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    const labelCell = document.createElement("td");
-    labelCell.textContent = row.label;
-    const youCell = document.createElement("td");
-    youCell.textContent = String(row.you);
-    youCell.classList.toggle("winner", youWins);
-    const oppCell = document.createElement("td");
-    oppCell.textContent = String(row.opp);
-    oppCell.classList.toggle("winner", oppWins);
-    tr.append(labelCell, youCell, oppCell);
-    goMpTableEl.append(tr);
-  }
+  buildScoreTable(goMpTableEl, youName, oppName, rows, youWins, oppWins);
 
   const eloLine = mpEloText(elo);
   goMpEloEl.hidden = eloLine === null;
   goMpEloEl.textContent = eloLine ?? "";
+
+  // Mirror the same breakdown into the persistent standings panel.
+  mpStandingsEmptyEl.hidden = true;
+  mpStandingsTableEl.hidden = false;
+  buildScoreTable(mpStandingsTableEl, youName, oppName, rows, youWins, oppWins);
 }
 
 /**
@@ -1313,13 +1399,19 @@ function formatTopOrBottom(rank: number, total: number): string {
  * the game-over screen) and returns to the main menu.
  */
 function leaveMultiplayerRoom(): void {
+  const wasSpectating = spectating;
   mpLobby.close();
   mpPlaying = false;
   spectating = false;
   screen = "menu";
+  state = null;
+  game = null;
+  aiBrain = null;
+  paused = false;
+  accumulator = 0;
   playBtn.textContent = "Play";
   hideGameOverOverlay();
-  setStatus("Left multiplayer match");
+  setStatus(wasSpectating ? "Stopped watching" : "Left multiplayer match");
 }
 
 /**
@@ -1346,14 +1438,7 @@ function startGame(): void {
     return;
   }
   if (mpPlaying || spectating) {
-    const wasSpectating = spectating;
-    mpLobby.close();
-    mpPlaying = false;
-    spectating = false;
-    screen = "menu";
-    playBtn.textContent = "Play";
-    hideGameOverOverlay();
-    setStatus(wasSpectating ? "Stopped watching" : "Left multiplayer match");
+    leaveMultiplayerRoom();
     return;
   }
   if (needsUsername()) {
@@ -1599,6 +1684,14 @@ function frame(now: number): void {
     opponentLabel: aiBrain ? "AI" : "Opp",
     fair: mpPlaying || spectating,
   });
+
+  // Scores leaderboard doesn't apply in multiplayer — swap in the standings
+  // panel (names, games-won tally, last-game breakdown) instead.
+  const inMpContext = mpPlaying || spectating;
+  scoresPanelEl.hidden = inMpContext;
+  mpStandingsPanelEl.hidden = !inMpContext;
+  mpStandingsQueueEl.hidden = !spectating;
+
   requestAnimationFrame(frame);
 }
 

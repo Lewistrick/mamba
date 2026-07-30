@@ -126,7 +126,7 @@ body {
   font-size: 0.75rem;
 }
 
-#btn-play {
+.primary {
   appearance: none;
   border: none;
   background: var(--accent-red);
@@ -138,7 +138,7 @@ body {
   letter-spacing: 0.04em;
 }
 
-#btn-play:hover,
+.primary:hover,
 .secondary:hover {
   filter: brightness(1.08);
 }
@@ -353,6 +353,9 @@ body {
   background: rgba(0, 0, 0, 0.55);
   text-align: center;
   pointer-events: auto;
+  /* .playfield sets line-height:0 for the canvas; undo that inherited value
+     here or multi-line text (e.g. button label + hotkey hint) collapses. */
+  line-height: normal;
 }
 
 .mp-ready-overlay[hidden] {
@@ -500,22 +503,50 @@ body {
   letter-spacing: 0.04em;
 }
 
+.mp-standings-names {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--accent-yellow);
+}
+
+.mp-standings-vs {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+.mp-standings-wins {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.mp-standings-subhead {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.mp-standings-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
 .guest-score-form {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: min(220px, 80%);
-}
-
-.guest-score-form .primary {
-  appearance: none;
-  border: none;
-  background: var(--accent-red);
-  color: var(--accent-yellow);
-  font: inherit;
-  font-weight: 700;
-  padding: 0.55rem 0.8rem;
-  cursor: pointer;
 }
 
 #guest-name {
@@ -864,7 +895,8 @@ body {
 #profile-password-confirm,
 #auth-email,
 #auth-password,
-#account-username {
+#account-username,
+#mp-join-code {
   font: inherit;
   font-size: 0.95rem;
   color: var(--text);
