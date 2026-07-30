@@ -242,20 +242,11 @@
                         <h3 id="profile-chart-title"></h3>
                         <fieldset class="chart-x-mode" aria-label="X axis">
                             <legend>X axis</legend>
-                            <label
-                                ><input type="radio" name="chart-x" value="date" checked /> By
-                                date</label
-                            >
-                            <label
-                                ><input type="radio" name="chart-x" value="game" /> By game</label
-                            >
+                            <label><input type="radio" name="chart-x" value="date" checked /> By
+                                date</label>
+                            <label><input type="radio" name="chart-x" value="game" /> By game</label>
                         </fieldset>
-                        <canvas
-                            id="profile-chart"
-                            width="640"
-                            height="280"
-                            aria-label="Score history"
-                        ></canvas>
+                        <canvas id="profile-chart" width="640" height="280" aria-label="Score history"></canvas>
                     </div>
                 </section>
             </div>
@@ -285,9 +276,14 @@
                     <h2>Controls</h2>
                     <ul class="help-list">
                         <li><strong>Arrow keys</strong>: steer</li>
-                        <li><strong>Enter</strong>: start / restart</li>
+                        <li><strong>Enter</strong>: start / restart (also "Play again" after an online match)</li>
                         <li><strong>P</strong>: pause (doesn't work in multiplayer)</li>
                         <li><strong>S</strong>: sound on/off</li>
+                    </ul>
+                    <p>Multiplayer adds two more:</p>
+                    <ul class="help-list">
+                        <li><strong>R</strong>: toggles Ready while you're waiting to start</li>
+                        <li><strong>Escape</strong> leaves the room.</li>
                     </ul>
                 </section>
                 <section class="profile-card">
@@ -297,27 +293,40 @@
                         <li><strong>Green</strong> (candy): 10 points</li>
                         <li><strong>Lime</strong> (block): some high number</li>
                     </ul>
-                    <p>When you eat enough (random number between 12-24) pellets, you molt, and you enter level 2.
+                    <p>When you eat enough (random number between 12-22) pellets, you molt, and you enter level 2.
                         From then on, blue pellets are worth 2 points and green pellets 20.</p>
                     <p>This goes on until level 10 (where blue pellets are 10 points, and green pellets 100 points),
                         after which the level increases, but the points per pellet stay the same.</p>
                     <p>The score for the lime pellet is the square root of the level times a random number between
                         20-50. You need to react fast (0.5 seconds) to find the quickest way there, but it's
                         theoretically always gettable (it uses the minimum Dijkstra distance).</p>
-                    <p>When you play against AI or online, the board score is
+                    <p>When you play against AI, the board score is
                         your pellet points minus the opponent’s pellet points, plus your time bonus
                         and win bonus (opponent time is not deducted). The top bar shows pellet scores,
                         your time bonus, and net without the win bonus. Lime pellets spawn a bit closer
                         to whoever just molted (about 5–10 path ticks nearer than the opponent).</p>
+                    <p><strong>Online multiplayer plays it completely straight</strong>: no dice are rolled.
+                        You always molt at exactly 20 pellets (not the random 12-22 above), the lime pellet
+                        is always worth the square root of the level times exactly 20 (not a random 20-50),
+                        and your net score is just your own pellets plus your time and win bonus — your
+                        opponent's pellets are never subtracted. Same board, same rules, but nobody gets to
+                        blame the dice.</p>
                 </section>
                 <section class="profile-card">
                     <h2>Modes &amp; boards</h2>
                     <ul class="help-list">
                         <li><strong>Solo</strong>: Classic single mamba</li>
                         <li><strong>vs AI</strong>: Easy / Medium / Hard on a shared field</li>
+                        <li><strong>Multiplayer</strong>: Real online 1v1 — create or join a room by code, or
+                            watch anyone's public match live</li>
                         <li><strong>Sizes</strong>: Small 11×20, Medium 22×40, Large 33×60</li>
                     </ul>
                     <p>For the 'classic' game experience, select solo mode on medium size.</p>
+                    <p>Multiplayer matches count for something: winning nudges your <strong>Elo</strong>
+                        rating up (losing nudges it down), and a sidebar tracks games won per player plus
+                        a breakdown of the last finished game, so bragging rights survive past a single
+                        match. Spectators get the same sidebar, plus a "join if a seat opens" toggle to
+                        jump into the next game.</p>
                 </section>
             </div>
         </div>
@@ -339,7 +348,8 @@
                     </fieldset>
                     <fieldset class="size-field">
                         <legend>Visibility</legend>
-                        <label><input type="radio" name="mp-visibility" value="public" checked /> Public (listed)</label>
+                        <label><input type="radio" name="mp-visibility" value="public" checked /> Public
+                            (listed)</label>
                         <label><input type="radio" name="mp-visibility" value="private" /> Private (code only)</label>
                     </fieldset>
                     <button type="button" id="btn-mp-create" class="primary">Create room</button>
