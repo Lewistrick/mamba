@@ -34,7 +34,6 @@ const COLORS = {
 const PREFERRED_CELL = 28;
 const HUD_H = 40;
 const PAD = 16;
-const FOOTER_H = 40;
 const GAP = 1;
 /** Must match the client simulation rate in main.ts. */
 const TICKS_PER_SECOND = 10;
@@ -81,7 +80,7 @@ export class Renderer {
    */
   fitCellSize(fieldWidth: number, fieldHeight: number, budget: FitBudget): number {
     const chromeX = PAD * 2 + 8;
-    const chromeY = HUD_H + FOOTER_H + PAD * 2 + 8;
+    const chromeY = HUD_H + PAD * 2 + 8;
     const maxCellW = Math.floor((budget.maxWidth - chromeX) / fieldWidth);
     const maxCellH = Math.floor((budget.maxHeight - chromeY) / fieldHeight);
     this.cell = Math.max(8, Math.min(PREFERRED_CELL, maxCellW, maxCellH));
@@ -108,7 +107,7 @@ export class Renderer {
 
     this.sizedFor = { width, height, dpr, cell: this.cell };
     const cssW = PAD * 2 + width * this.cell + 8;
-    const cssH = HUD_H + PAD * 2 + height * this.cell + 8 + FOOTER_H;
+    const cssH = HUD_H + PAD * 2 + height * this.cell + 8;
 
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
@@ -127,7 +126,7 @@ export class Renderer {
     const height = this.sizedFor?.height ?? 22;
     return {
       width: PAD * 2 + width * this.cell + 8,
-      height: HUD_H + PAD * 2 + height * this.cell + 8 + FOOTER_H,
+      height: HUD_H + PAD * 2 + height * this.cell + 8,
     };
   }
 
@@ -168,8 +167,6 @@ export class Renderer {
       this.drawField(state);
     }
 
-    this.drawFooter();
-
     if (overlay === "paused") {
       this.drawOverlay("paused", state, opponentLabel, fair);
     } else if (overlay === "gameover") {
@@ -194,11 +191,13 @@ export class Renderer {
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
 
-    ctx.fillStyle = COLORS.hudBadge;
-    ctx.fillRect(8, 6, 78, HUD_H - 12);
-    ctx.fillStyle = COLORS.hudText;
     ctx.font = "bold 18px 'IBM Plex Mono', monospace";
-    ctx.fillText("MAMBA", 16, cy);
+    const logoPaddingX = 8;
+    const logoWidth = Math.ceil(ctx.measureText("MAMBA").width) + logoPaddingX * 2;
+    ctx.fillStyle = COLORS.hudBadge;
+    ctx.fillRect(8, 6, logoWidth, HUD_H - 12);
+    ctx.fillStyle = COLORS.hudText;
+    ctx.fillText("MAMBA", 8 + logoPaddingX, cy);
 
     const score = state?.score ?? 0;
     const level = state?.level ?? 1;
@@ -523,22 +522,6 @@ export class Renderer {
   }
 
   /**
-   * Draws credit footer text.
-   */
-  private drawFooter(): void {
-    const { ctx } = this;
-    const { width: cssW, height: cssH } = this.logicalSize;
-    const y = cssH - FOOTER_H + 14;
-    ctx.font = "12px 'IBM Plex Mono', monospace";
-    ctx.fillStyle = COLORS.borderOuter;
-    ctx.textAlign = "center";
-    ctx.fillText("Original game by Bert Uffen · Remake in progress", Math.round(cssW / 2), y);
-    ctx.fillStyle = COLORS.white;
-    ctx.fillText("Phase 5 — AI opponent · global boards", Math.round(cssW / 2), y + 16);
-    ctx.textAlign = "left";
-  }
-
-  /**
    * Draws a full-field status overlay (game over or pause).
    *
    * @param kind - Overlay mode.
@@ -553,7 +536,7 @@ export class Renderer {
     const { ctx } = this;
     const { width: cssW, height: cssH } = this.logicalSize;
     ctx.fillStyle = COLORS.overlay;
-    ctx.fillRect(0, HUD_H, cssW, cssH - HUD_H - FOOTER_H);
+    ctx.fillRect(0, HUD_H, cssW, cssH - HUD_H);
 
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.hudText;

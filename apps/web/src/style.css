@@ -321,9 +321,7 @@ body {
 #game {
   display: block;
   background: #000;
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 .gameover-overlay {
