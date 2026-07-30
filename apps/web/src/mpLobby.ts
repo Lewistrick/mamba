@@ -102,6 +102,8 @@ export class MpLobbyController {
   private awaitingOpponent = false;
   /** Games won per absolute seat, for this room session only (not persisted). */
   private wins: [number, number] = [0, 0];
+  /** Sorted userId pair the current wins tally applies to, so a seat change resets it. */
+  private pairingKey: string | null = null;
 
   /**
    * @param root - #mp-page element.
@@ -257,6 +259,7 @@ export class MpLobbyController {
     this.spectating = false;
     this.resetQueueToggle();
     this.awaitingOpponent = false;
+    this.pairingKey = null;
     this.hideSpectateOverlay();
     this.hooks.hideReadyOverlay();
     this.client?.leave();
@@ -319,6 +322,7 @@ export class MpLobbyController {
       this.resetQueueToggle();
       this.awaitingOpponent = true;
       this.wins = [0, 0];
+      this.pairingKey = null;
       this.hooks.onEnterRoom();
       this.hideSpectateOverlay();
       this.hooks.hideReadyOverlay();
@@ -343,6 +347,7 @@ export class MpLobbyController {
       const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
       const code = input?.value.trim() ?? "";
       this.wins = [0, 0];
+      this.pairingKey = null;
       this.hooks.onEnterRoom();
       this.client.joinRoom(code);
     } catch (err) {
@@ -380,6 +385,7 @@ export class MpLobbyController {
       this.resetQueueToggle();
       this.spectating = true;
       this.wins = [0, 0];
+      this.pairingKey = null;
       this.hooks.onEnterRoom();
       this.client.spectate(code);
     } catch (err) {
@@ -431,6 +437,18 @@ export class MpLobbyController {
         ? "You'll join if either player leaves."
         : `${pos} spectator${pos === 1 ? "" : "s"} ahead of you.`,
     );
+  }
+
+  /**
+   * Stable key for the two currently seated userIds, so wins/last-game can
+   * be reset when a departed player is replaced by someone new (as opposed
+   * to a rematch, where both userIds stay the same).
+   *
+   * @returns Sorted `"a,b"` key, or null when both seats aren't filled.
+   */
+  private currentPairingKey(): string | null {
+    const ids = (this.room?.players ?? []).map((p) => p.userId).sort();
+    return ids.length === 2 ? ids.join(",") : null;
   }
 
   /**
@@ -527,6 +545,15 @@ export class MpLobbyController {
         this.awaitingOpponent = false;
         this.hideSpectateOverlay();
         const view = remapStateForYou(msg.state, msg.youIndex);
+        const pairing = this.currentPairingKey();
+        if (pairing !== null && pairing !== this.pairingKey) {
+          // Different pair of seated userIds than last time (a departed
+          // player was replaced) — a rematch with the same two keeps the
+          // same key, so the tally only resets on an actual lineup change.
+          this.wins = [0, 0];
+          this.hooks.onEnterRoom();
+        }
+        this.pairingKey = pairing;
         if (!this.pregameShown) {
           this.pregameShown = true;
           if (!this.expectRematchPregame) {
@@ -596,6 +623,12 @@ export class MpLobbyController {
       case "spectate_state": {
         this.spectating = true;
         this.setMatchUi(true);
+        const pairing = this.currentPairingKey();
+        if (pairing !== null && pairing !== this.pairingKey) {
+          this.wins = [0, 0];
+          this.hooks.onEnterRoom();
+        }
+        this.pairingKey = pairing;
         this.syncSpectateOverlay(msg.names, msg.status);
         this.hooks.onSpectateState(msg.state, msg.names, msg.status);
         this.hooks.onStandings(msg.names, this.wins);

@@ -313,6 +313,12 @@ let aiBrain: AiBrain | null = null;
 let screen: Screen = "menu";
 let mpPlaying = false;
 let spectating = false;
+/**
+ * Broader than mpPlaying/spectating: true from room entry until the player
+ * actually leaves, including the post-match/rematch-wait screen (where
+ * mpPlaying is briefly false). Drives the Scores vs. standings panel swap.
+ */
+let inMpRoom = false;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -361,6 +367,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     screen = "playing";
     paused = true;
     mpPlaying = true;
+    inMpRoom = true;
     playBtn.textContent = "Leave match";
     setStatus(
       code
@@ -399,6 +406,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     screen = "playing";
     paused = true;
     mpPlaying = true;
+    inMpRoom = true;
     playBtn.textContent = "Leave match";
     setStatus("Opponent joined — toggle Ready when set");
   },
@@ -409,11 +417,13 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     screen = "playing";
     paused = true;
     mpPlaying = true;
+    inMpRoom = true;
     playBtn.textContent = "Leave match";
     setStatus("Starting…");
   },
   onMatchState: (view) => {
     mpPlaying = true;
+    inMpRoom = true;
     state = view;
     game = null;
     aiBrain = null;
@@ -424,6 +434,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onMatchOver: (view, youIndex, names, winnerIndex, elo) => {
     mpPlaying = false;
+    inMpRoom = true;
     state = view;
     screen = "gameover";
     playBtn.textContent = "Play again";
@@ -459,6 +470,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onSpectateState: (view, names, roomStatus) => {
     spectating = true;
+    inMpRoom = true;
     state = view;
     game = null;
     aiBrain = null;
@@ -478,6 +490,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onSpectateWaiting: (sizeId, hostName) => {
     spectating = true;
+    inMpRoom = true;
     state = placeholderState(FIELD_SIZES[sizeId]);
     game = null;
     aiBrain = null;
@@ -500,6 +513,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     }
   },
   onSpectateGameOver: (view, names, winnerIndex) => {
+    inMpRoom = true;
     state = view;
     playBtn.textContent = "Stop watching";
     renderMpGameOver(
@@ -520,6 +534,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onSpectateEnded: (reason) => {
     spectating = false;
+    inMpRoom = false;
     state = null;
     screen = "multiplayer";
     playBtn.textContent = "Play";
@@ -553,7 +568,16 @@ const mpLobby = new MpLobbyController(mpPageEl, {
  * @param target - Event target.
  */
 function isTypingTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+  if (target instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  // Checkboxes/radios (e.g. the Ready toggle) keep keyboard focus after a
+  // mouse click but aren't "typing" — don't let them swallow hotkeys.
+  return (
+    target instanceof HTMLInputElement &&
+    target.type !== "checkbox" &&
+    target.type !== "radio"
+  );
 }
 
 /**
@@ -1403,6 +1427,7 @@ function leaveMultiplayerRoom(): void {
   mpLobby.close();
   mpPlaying = false;
   spectating = false;
+  inMpRoom = false;
   screen = "menu";
   state = null;
   game = null;
@@ -1686,10 +1711,11 @@ function frame(now: number): void {
   });
 
   // Scores leaderboard doesn't apply in multiplayer — swap in the standings
-  // panel (names, games-won tally, last-game breakdown) instead.
-  const inMpContext = mpPlaying || spectating;
-  scoresPanelEl.hidden = inMpContext;
-  mpStandingsPanelEl.hidden = !inMpContext;
+  // panel (names, games-won tally, last-game breakdown) instead. Uses the
+  // broader inMpRoom (not mpPlaying/spectating) so it stays shown through
+  // the post-match/rematch-wait screen too.
+  scoresPanelEl.hidden = inMpRoom;
+  mpStandingsPanelEl.hidden = !inMpRoom;
   mpStandingsQueueEl.hidden = !spectating;
 
   requestAnimationFrame(frame);

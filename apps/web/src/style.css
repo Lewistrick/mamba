@@ -208,6 +208,10 @@ body {
   overflow: auto;
 }
 
+.leaderboard[hidden] {
+  display: none;
+}
+
 .lb-header {
   display: flex;
   align-items: center;
@@ -542,6 +546,10 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.mp-standings-queue[hidden] {
+  display: none;
+}
+
 .guest-score-form {
   display: flex;
   flex-direction: column;
@@ -745,6 +753,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.mp-join-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mp-join-actions .secondary {
+  flex: 1 1 0;
 }
 
 .profile-card h2 {

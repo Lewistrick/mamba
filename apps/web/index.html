@@ -351,12 +351,14 @@
                         Room code
                         <input id="mp-join-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC123" />
                     </label>
-                    <button type="button" id="btn-mp-join" class="secondary">Join</button>
-                    <button type="button" id="btn-mp-watch" class="text-btn">Watch instead</button>
+                    <div class="mp-join-actions">
+                        <button type="button" id="btn-mp-join" class="secondary">Join</button>
+                        <button type="button" id="btn-mp-watch" class="secondary">Watch</button>
+                    </div>
                 </section>
                 <section class="profile-card">
                     <h2>Public rooms</h2>
-                    <button type="button" id="btn-mp-refresh" class="text-btn">Refresh list</button>
+                    <button type="button" id="btn-mp-refresh" class="secondary">Refresh list</button>
                     <ul id="mp-public-list" class="mp-public-list"></ul>
                     <p id="mp-public-empty" class="hint">No public rooms waiting</p>
                 </section>
