@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getBoard,
+  MAX_ENTRIES,
   periodStart,
   qualifiesForBoard,
   sanitizeName,
@@ -75,14 +76,15 @@ describe("periodStart", () => {
 });
 
 describe("getBoard / submitScore", () => {
-  it("ranks by score descending and caps at 10", () => {
-    for (let i = 1; i <= 12; i += 1) {
+  it(`ranks by score descending and caps at ${MAX_ENTRIES}`, () => {
+    const total = MAX_ENTRIES + 2;
+    for (let i = 1; i <= total; i += 1) {
       submitScore(entry({ score: i * 10, createdAt: i, name: `P${i}` }));
     }
     const board = getBoard("medium", "solo", "all");
-    expect(board).toHaveLength(10);
-    expect(board[0].score).toBe(120);
-    expect(board[9].score).toBe(30);
+    expect(board).toHaveLength(MAX_ENTRIES);
+    expect(board[0].score).toBe(total * 10);
+    expect(board[MAX_ENTRIES - 1].score).toBe((total - MAX_ENTRIES + 1) * 10);
   });
 
   it("filters daily scores by a rolling 24h window", () => {
@@ -101,10 +103,10 @@ describe("getBoard / submitScore", () => {
     expect(qualifiesForBoard(-12, "small", "solo")).toBe(true);
     expect(qualifiesForBoard(0, "small", "solo")).toBe(true);
     expect(qualifiesForBoard(1, "small", "solo")).toBe(true);
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < MAX_ENTRIES; i += 1) {
       submitScore(entry({ score: 100 - i, createdAt: i, sizeId: "small" }));
     }
-    expect(qualifiesForBoard(50, "small", "solo")).toBe(false);
+    expect(qualifiesForBoard(100 - MAX_ENTRIES, "small", "solo")).toBe(false);
     expect(qualifiesForBoard(100, "small", "solo")).toBe(true);
     expect(qualifiesForBoard(-1, "small", "solo")).toBe(false);
   });

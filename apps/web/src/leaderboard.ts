@@ -5,7 +5,7 @@
 import type { FieldSizeId } from "@mamba/engine";
 
 const STORAGE_KEY = "mamba.scores.v1";
-const MAX_ENTRIES = 10;
+const MAX_ENTRIES = 20;
 
 /** Time window for a leaderboard view. */
 export type LeaderboardPeriod = "all" | "weekly" | "daily";

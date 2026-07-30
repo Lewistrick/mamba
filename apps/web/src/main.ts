@@ -15,6 +15,7 @@ import { SoundBoard } from "./audio.ts";
 import { fetchGlobalBoard, fetchGlobalStanding, submitGlobalScore } from "./globalLeaderboard.ts";
 import {
   getBoard,
+  MAX_ENTRIES,
   qualifiesForBoard,
   sanitizeName,
   submitScore,
@@ -133,6 +134,8 @@ const goMpResult = document.querySelector<HTMLElement>("#go-mp-result");
 const goMpTable = document.querySelector<HTMLTableElement>("#go-mp-table");
 const goMpElo = document.querySelector<HTMLElement>("#go-mp-elo");
 const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
+const goTooLow = document.querySelector<HTMLElement>("#go-too-low");
+const goAccountCta = document.querySelector<HTMLElement>("#go-account-cta");
 const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
@@ -205,6 +208,8 @@ if (
   !goMpTable ||
   !goMpElo ||
   !goSaveStatus ||
+  !goTooLow ||
+  !goAccountCta ||
   !guestScoreForm ||
   !guestNameInput ||
   !playAgainBtn ||
@@ -275,6 +280,8 @@ const goMpResultEl = goMpResult;
 const goMpTableEl = goMpTable;
 const goMpEloEl = goMpElo;
 const goSaveStatusEl = goSaveStatus;
+const goTooLowEl = goTooLow;
+const goAccountCtaEl = goAccountCta;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
@@ -1229,6 +1236,9 @@ function setGoSaveStatus(text: string | null, kind: "ok" | "error" | "pending" =
 function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
   guestFormEl.hidden = true;
+  goTooLowEl.hidden = true;
+  goAccountCtaEl.hidden = true;
+  authEl.classList.remove("cta-highlight");
   leaveRoomEl.hidden = true;
   playAgainEl.hidden = false;
   playAgainWaitEl.hidden = true;
@@ -1243,11 +1253,12 @@ function hideGameOverOverlay(): void {
  * Shows the game-over overlay over the playfield.
  *
  * @param pending - Score + replay payload.
- * @param mode - Guest name entry vs signed-in auto result.
+ * @param mode - Guest name entry, guest score too low for the local board, or
+ * signed-in auto result.
  */
 function showGameOverOverlay(
   pending: PendingScore,
-  mode: "guest" | "account",
+  mode: "guest" | "guest-too-low" | "account",
 ): void {
   pendingScore = pending;
   scoreSaved = false;
@@ -1256,14 +1267,22 @@ function showGameOverOverlay(
   goMpSummaryEl.hidden = true;
   goScoreEl.hidden = false;
   goScoreEl.textContent = `Score: ${pending.score}`;
+  goAccountCtaEl.hidden = mode === "account";
   if (mode === "guest") {
     setGoSaveStatus(null);
+    goTooLowEl.hidden = true;
     guestFormEl.hidden = false;
     guestNameEl.value = settings.playerName;
     guestNameEl.focus();
     guestNameEl.select();
+  } else if (mode === "guest-too-low") {
+    setGoSaveStatus(null);
+    guestFormEl.hidden = true;
+    goTooLowEl.hidden = false;
+    goTooLowEl.textContent = `Score too low for the local leaderboard (top ${MAX_ENTRIES})`;
   } else {
     guestFormEl.hidden = true;
+    goTooLowEl.hidden = true;
     setGoSaveStatus("Saving score…", "pending");
   }
 }
@@ -1608,8 +1627,9 @@ function onGameOver(final: GameState, run: Game): void {
     showGameOverOverlay(pending, "account");
     goScoreEl.textContent = summary;
     void autoSaveAccountScore(pending);
-  } else if (!signedInEmail && qualifiesForBoard(score, sizeId, mode)) {
-    showGameOverOverlay(pending, "guest");
+  } else if (!signedInEmail) {
+    const qualifies = qualifiesForBoard(score, sizeId, mode);
+    showGameOverOverlay(pending, qualifies ? "guest" : "guest-too-low");
     goScoreEl.textContent = summary;
     setStatus(shortStatus);
   } else {
@@ -1839,6 +1859,13 @@ mpReadyLeaveEl.addEventListener("click", leaveMultiplayerRoom);
 guestFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   void saveGuestScore();
+});
+
+goAccountCtaEl.addEventListener("mouseenter", () => {
+  authEl.classList.add("cta-highlight");
+});
+goAccountCtaEl.addEventListener("mouseleave", () => {
+  authEl.classList.remove("cta-highlight");
 });
 
 periodSelect.addEventListener("change", () => {

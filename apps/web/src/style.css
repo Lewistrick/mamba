@@ -435,6 +435,24 @@ body {
   color: var(--muted);
 }
 
+p.go-too-low {
+  color: var(--accent-red);
+}
+
+.go-account-cta {
+  margin: 0;
+  max-width: min(320px, 90%);
+  font-size: 0.8rem;
+  color: var(--accent-blue);
+  text-decoration: underline;
+  cursor: default;
+}
+
+.auth-panel.cta-highlight {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
 .go-mp-summary {
   display: flex;
   flex-direction: column;
