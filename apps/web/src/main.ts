@@ -116,6 +116,7 @@ const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
 const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
 const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
+const leaveRoomBtn = document.querySelector<HTMLButtonElement>("#btn-leave-room");
 const helpBtn = document.querySelector<HTMLButtonElement>("#btn-help");
 const sizeInputs = document.querySelectorAll<HTMLInputElement>('input[name="size"]');
 const gameShell = document.querySelector<HTMLElement>("#game-shell");
@@ -171,6 +172,7 @@ if (
   !guestScoreForm ||
   !guestNameInput ||
   !playAgainBtn ||
+  !leaveRoomBtn ||
   !helpBtn ||
   !gameShell ||
   !profilePage ||
@@ -224,6 +226,7 @@ const goSaveStatusEl = goSaveStatus;
 const guestFormEl = guestScoreForm;
 const guestNameEl = guestNameInput;
 const playAgainEl = playAgainBtn;
+const leaveRoomEl = leaveRoomBtn;
 const helpBtnEl = helpBtn;
 const gameShellEl = gameShell;
 const profilePageEl = profilePage;
@@ -321,6 +324,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     screen = "playing";
     paused = false;
     playBtn.textContent = "Leave match";
+    sounds.playEvents(view.events);
   },
   onMatchOver: (view, youIndex, names, winnerIndex, elo) => {
     mpPlaying = false;
@@ -340,6 +344,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     goScoreEl.textContent = text;
     overlayEl.hidden = false;
     guestFormEl.hidden = true;
+    leaveRoomEl.hidden = false;
     setGoSaveStatus("Saved to local scores (mode: mp)", "ok");
     setStatus(
       winnerIndex === youIndex
@@ -959,6 +964,7 @@ function setGoSaveStatus(text: string | null, kind: "ok" | "error" | "pending" =
 function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
   guestFormEl.hidden = true;
+  leaveRoomEl.hidden = true;
   setGoSaveStatus(null);
   pendingScore = null;
   scoreSaved = false;
@@ -977,6 +983,7 @@ function showGameOverOverlay(
   pendingScore = pending;
   scoreSaved = false;
   overlayEl.hidden = false;
+  leaveRoomEl.hidden = true;
   goScoreEl.textContent = `Score: ${pending.score}`;
   if (mode === "guest") {
     setGoSaveStatus(null);
@@ -1381,6 +1388,16 @@ playAgainEl.addEventListener("click", () => {
     return;
   }
   startGame();
+});
+
+leaveRoomEl.addEventListener("click", () => {
+  mpLobby.close();
+  mpPlaying = false;
+  spectating = false;
+  screen = "menu";
+  playBtn.textContent = "Play";
+  hideGameOverOverlay();
+  setStatus("Left multiplayer match");
 });
 
 guestFormEl.addEventListener("submit", (event) => {
