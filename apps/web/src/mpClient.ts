@@ -30,6 +30,17 @@ export interface RoomSnapshot {
   joinQueueLength: number;
   /** This client's own 0-based position in the join queue, or null if not queued. */
   yourQueuePosition: number | null;
+  /** Games won per current seat index, for this seat pairing only. */
+  wins: [number, number];
+  /** Most recent finished game for the current seat pairing, or null. */
+  lastGame: RoomLastGame | null;
+}
+
+/** Most recent finished game in a room, kept until the seat pairing changes. */
+export interface RoomLastGame {
+  state: GameState;
+  names: [string, string];
+  winnerIndex: number | null;
 }
 
 /** Public lobby row. */

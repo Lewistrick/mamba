@@ -10,6 +10,7 @@ import {
   mpWsUrl,
   remapStateForYou,
   type PublicRoomInfo,
+  type RoomLastGame,
   type RoomSnapshot,
   type RoomVisibility,
 } from "./mpClient.ts";
@@ -63,24 +64,32 @@ export interface MpUiHooks {
     status: RoomSnapshot["status"],
   ) => void;
   /**
-   * Spectating a room that's still waiting for a second player — no live
-   * game exists yet.
+   * Spectating a room with no live game yet — either it hasn't started
+   * ("waiting") or the last match just ended and a rematch hasn't started
+   * ("finished"). Not called once real match content has been shown, so it
+   * won't clobber the spectate_game_over table.
    */
-  onSpectateWaiting: (sizeId: FieldSizeId, hostName: string) => void;
+  onSpectateWaiting: (
+    sizeId: FieldSizeId,
+    names: [string, string],
+    status: "waiting" | "finished",
+  ) => void;
   onSpectateGameOver: (
     state: GameState,
     names: [string, string],
     winnerIndex: number | null,
   ) => void;
   onSpectateEnded: (reason: string) => void;
-  /** Player names + games-won tally for the current room session's standings panel. */
+  /** Player names + games-won tally for the standings panel (server-tracked). */
   onStandings: (names: [string, string], wins: [number, number]) => void;
+  /** Most recent finished game for the standings panel, or null to show "no games yet". */
+  onLastGame: (lastGame: RoomLastGame | null) => void;
   /**
    * Spectator join-queue status line for the standings panel, or null to
    * hide it (toggle off, or not queued).
    */
   onQueueInfo: (text: string | null) => void;
-  /** Fresh room entry (create/join/watch) — clear the standings panel's last-game table. */
+  /** Fresh room entry (create/join/watch) — optimistic clear before the server confirms. */
   onEnterRoom: () => void;
 }
 
@@ -100,10 +109,12 @@ export class MpLobbyController {
   private queued = false;
   /** True from room creation until an opponent seats (pregame) or we leave. */
   private awaitingOpponent = false;
-  /** Games won per absolute seat, for this room session only (not persisted). */
-  private wins: [number, number] = [0, 0];
-  /** Sorted userId pair the current wins tally applies to, so a seat change resets it. */
-  private pairingKey: string | null = null;
+  /**
+   * True once real match content (a live board or a finished result) has
+   * been shown this spectate session — gates onSpectateWaiting so a
+   * redundant "room" broadcast doesn't clobber it.
+   */
+  private hasLiveContent = false;
 
   /**
    * @param root - #mp-page element.
@@ -259,7 +270,6 @@ export class MpLobbyController {
     this.spectating = false;
     this.resetQueueToggle();
     this.awaitingOpponent = false;
-    this.pairingKey = null;
     this.hideSpectateOverlay();
     this.hooks.hideReadyOverlay();
     this.client?.leave();
@@ -321,8 +331,6 @@ export class MpLobbyController {
       this.spectating = false;
       this.resetQueueToggle();
       this.awaitingOpponent = true;
-      this.wins = [0, 0];
-      this.pairingKey = null;
       this.hooks.onEnterRoom();
       this.hideSpectateOverlay();
       this.hooks.hideReadyOverlay();
@@ -346,8 +354,6 @@ export class MpLobbyController {
       }
       const input = this.root.querySelector<HTMLInputElement>("#mp-join-code");
       const code = input?.value.trim() ?? "";
-      this.wins = [0, 0];
-      this.pairingKey = null;
       this.hooks.onEnterRoom();
       this.client.joinRoom(code);
     } catch (err) {
@@ -384,8 +390,7 @@ export class MpLobbyController {
       this.awaitingOpponent = false;
       this.resetQueueToggle();
       this.spectating = true;
-      this.wins = [0, 0];
-      this.pairingKey = null;
+      this.hasLiveContent = false;
       this.hooks.onEnterRoom();
       this.client.spectate(code);
     } catch (err) {
@@ -440,18 +445,6 @@ export class MpLobbyController {
   }
 
   /**
-   * Stable key for the two currently seated userIds, so wins/last-game can
-   * be reset when a departed player is replaced by someone new (as opposed
-   * to a rematch, where both userIds stay the same).
-   *
-   * @returns Sorted `"a,b"` key, or null when both seats aren't filled.
-   */
-  private currentPairingKey(): string | null {
-    const ids = (this.room?.players ?? []).map((p) => p.userId).sort();
-    return ids.length === 2 ? ids.join(",") : null;
-  }
-
-  /**
    * Updates the spectate overlay copy while watching a match.
    *
    * @param names - Absolute seat names.
@@ -502,6 +495,12 @@ export class MpLobbyController {
       case "room":
         this.room = msg.room;
         this.renderRoom(msg.room);
+        {
+          const bySeat = (i: number): string =>
+            msg.room.players.find((p) => p.index === i)?.displayName ?? "";
+          this.hooks.onStandings([bySeat(0), bySeat(1)], msg.room.wins);
+          this.hooks.onLastGame(msg.room.lastGame);
+        }
         if (msg.room.status === "finished") {
           this.updateRematchStatus(msg.room);
         }
@@ -522,14 +521,21 @@ export class MpLobbyController {
         ) {
           // Room actually created (or code confirmed) — refresh the code now known.
           this.hooks.onWaitingForOpponent(msg.room.code, msg.room.sizeId);
-        } else if (this.spectating && msg.room.status === "waiting") {
-          // No live game yet (still just the host) — the server won't send
-          // spectate_state until one exists, so this "room" reply is the
-          // only signal we get to show something. "finished" rooms are
-          // deliberately not handled here — that would clobber the final
-          // scoreboard just shown via spectate_game_over.
-          const host = msg.room.players.find((p) => p.index === 0)?.displayName ?? "";
-          this.hooks.onSpectateWaiting(msg.room.sizeId, host);
+        } else if (
+          this.spectating &&
+          !this.hasLiveContent &&
+          (msg.room.status === "waiting" || msg.room.status === "finished")
+        ) {
+          // No live game to show yet — never started, or the match just
+          // ended and no real content has been shown this session (once it
+          // has, spectate_game_over owns the display; this won't clobber it).
+          const bySeat = (i: number): string =>
+            msg.room.players.find((p) => p.index === i)?.displayName ?? "";
+          this.hooks.onSpectateWaiting(
+            msg.room.sizeId,
+            [bySeat(0), bySeat(1)],
+            msg.room.status,
+          );
           this.setMatchUi(true);
         }
         this.syncQueueInfo();
@@ -545,15 +551,6 @@ export class MpLobbyController {
         this.awaitingOpponent = false;
         this.hideSpectateOverlay();
         const view = remapStateForYou(msg.state, msg.youIndex);
-        const pairing = this.currentPairingKey();
-        if (pairing !== null && pairing !== this.pairingKey) {
-          // Different pair of seated userIds than last time (a departed
-          // player was replaced) — a rematch with the same two keeps the
-          // same key, so the tally only resets on an actual lineup change.
-          this.wins = [0, 0];
-          this.hooks.onEnterRoom();
-        }
-        this.pairingKey = pairing;
         if (!this.pregameShown) {
           this.pregameShown = true;
           if (!this.expectRematchPregame) {
@@ -564,7 +561,6 @@ export class MpLobbyController {
         this.hooks.onPregame(view, msg.youIndex, msg.names, msg.ready);
         this.setMatchUi(true);
         this.syncReadyOverlay(msg.names, msg.youIndex, msg.ready, false);
-        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "countdown": {
@@ -574,7 +570,6 @@ export class MpLobbyController {
         this.setMatchUi(true);
         this.syncReadyOverlay(msg.names, msg.youIndex, [true, true], true);
         this.runCountdownUi();
-        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "state": {
@@ -583,7 +578,6 @@ export class MpLobbyController {
         this.hooks.hideReadyOverlay();
         this.hooks.onMatchState(view, msg.youIndex, msg.names);
         this.setMatchUi(true);
-        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "game_over": {
@@ -595,9 +589,6 @@ export class MpLobbyController {
         this.setMatchUi(false);
         // Keep lobby closed while GAME OVER shows on the game shell.
         hideLobbyForMatchOver(this.root);
-        if (msg.winnerIndex !== null) {
-          this.wins[msg.winnerIndex] += 1;
-        }
         this.hooks.onMatchOver(
           view,
           msg.youIndex,
@@ -605,7 +596,6 @@ export class MpLobbyController {
           msg.winnerIndex,
           msg.elo ?? null,
         );
-        this.hooks.onStandings(msg.names, this.wins);
         const you = msg.state.players[msg.youIndex];
         const opp = msg.state.players[1 - msg.youIndex];
         if (you && opp) {
@@ -622,25 +612,16 @@ export class MpLobbyController {
       }
       case "spectate_state": {
         this.spectating = true;
+        this.hasLiveContent = true;
         this.setMatchUi(true);
-        const pairing = this.currentPairingKey();
-        if (pairing !== null && pairing !== this.pairingKey) {
-          this.wins = [0, 0];
-          this.hooks.onEnterRoom();
-        }
-        this.pairingKey = pairing;
         this.syncSpectateOverlay(msg.names, msg.status);
         this.hooks.onSpectateState(msg.state, msg.names, msg.status);
-        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "spectate_game_over": {
+        this.hasLiveContent = true;
         this.hideSpectateOverlay();
-        if (msg.winnerIndex !== null) {
-          this.wins[msg.winnerIndex] += 1;
-        }
         this.hooks.onSpectateGameOver(msg.state, msg.names, msg.winnerIndex);
-        this.hooks.onStandings(msg.names, this.wins);
         break;
       }
       case "spectate_ended": {

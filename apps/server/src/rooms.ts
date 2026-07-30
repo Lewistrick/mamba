@@ -13,6 +13,7 @@ import { generateRoomCode, normalizeRoomCode } from "./codes.ts";
 import type { MpUser } from "./auth.ts";
 import type {
   PublicRoomInfo,
+  RoomLastGame,
   RoomPlayerInfo,
   RoomSnapshot,
   RoomStatus,
@@ -48,6 +49,12 @@ export interface Room {
   spectators: Seat[];
   /** Spectators who asked to take the next vacated seat, in arrival order. */
   joinQueue: Seat[];
+  /** Games won per current seat index — reset when the seat pairing changes. */
+  wins: [number, number];
+  /** Most recent finished game for the current seat pairing, or null. */
+  lastGame: RoomLastGame | null;
+  /** Sorted userId pair `wins`/`lastGame` apply to, or null before any pairing. */
+  pairing: string | null;
 }
 
 /** Result of creating a room. */
@@ -107,6 +114,9 @@ export class RoomManager {
       eloApplied: false,
       spectators: [],
       joinQueue: [],
+      wins: [0, 0],
+      lastGame: null,
+      pairing: null,
     };
     this.rooms.set(code, room);
     return { ok: true, room };
@@ -299,7 +309,7 @@ export class RoomManager {
   listPublic(): PublicRoomInfo[] {
     const out: PublicRoomInfo[] = [];
     for (const room of this.rooms.values()) {
-      if (room.visibility !== "public" || room.status === "finished") {
+      if (room.visibility !== "public") {
         continue;
       }
       const host = room.seats[0];
@@ -363,6 +373,8 @@ export class RoomManager {
       hostUserId: room.hostUserId,
       joinQueueLength: room.joinQueue.length,
       yourQueuePosition: queuePos >= 0 ? queuePos : null,
+      wins: [...room.wins] as [number, number],
+      lastGame: room.lastGame,
     };
   }
 
@@ -401,7 +413,38 @@ export class RoomManager {
     room.tick = 0;
     room.scoresSaved = false;
     room.eloApplied = false;
+    const pairing = [room.seats[0].user.userId, room.seats[1].user.userId]
+      .sort()
+      .join(",");
+    if (pairing !== room.pairing) {
+      // A departed player was replaced by someone new — a rematch between
+      // the same two keeps the same pairing and the running tally.
+      room.wins = [0, 0];
+      room.lastGame = null;
+    }
+    room.pairing = pairing;
     return null;
+  }
+
+  /**
+   * Records a finished game's result on the room (wins tally + last-game
+   * snapshot), for players/spectators who join later.
+   *
+   * @param room - Finished room.
+   * @param winnerIndex - Absolute winner seat, or null for a draw.
+   * @param state - Final engine state.
+   * @param names - Absolute seat display names.
+   */
+  recordResult(
+    room: Room,
+    winnerIndex: number | null,
+    state: GameState,
+    names: [string, string],
+  ): void {
+    if (winnerIndex !== null) {
+      room.wins[winnerIndex] += 1;
+    }
+    room.lastGame = { state, names, winnerIndex };
   }
 
   /**

@@ -488,7 +488,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
           : "Watching";
     setStatus(`${phase}: ${names[0] || "?"} vs ${names[1] || "?"}`);
   },
-  onSpectateWaiting: (sizeId, hostName) => {
+  onSpectateWaiting: (sizeId, names, roomStatus) => {
     spectating = true;
     inMpRoom = true;
     state = placeholderState(FIELD_SIZES[sizeId]);
@@ -499,7 +499,12 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     mpPlaying = false;
     playBtn.textContent = "Stop watching";
     overlayEl.hidden = true;
-    setStatus(`Waiting for opponent: ${hostName || "?"}`);
+    const matchup = names[1] ? `${names[0] || "?"} vs ${names[1]}` : names[0] || "?";
+    setStatus(
+      roomStatus === "finished"
+        ? `Waiting for rematch: ${matchup}`
+        : `Waiting for opponent: ${matchup}`,
+    );
 
     const overlay = document.querySelector<HTMLElement>("#mp-spectate-overlay");
     const title = document.querySelector<HTMLElement>("#mp-spectate-title");
@@ -507,9 +512,12 @@ const mpLobby = new MpLobbyController(mpPageEl, {
       overlay.hidden = false;
     }
     if (title) {
-      title.textContent = hostName
-        ? `Game hasn't started yet — waiting for ${hostName}'s opponent`
-        : "Game hasn't started yet";
+      title.textContent =
+        roomStatus === "finished"
+          ? `Match finished — waiting for rematch: ${matchup}`
+          : names[0]
+            ? `Game hasn't started yet — waiting for ${names[0]}'s opponent`
+            : "Game hasn't started yet";
     }
   },
   onSpectateGameOver: (view, names, winnerIndex) => {
@@ -559,6 +567,21 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     mpStandingsNameBEl.textContent = "";
     mpStandingsWinsAEl.textContent = "0";
     mpStandingsWinsBEl.textContent = "0";
+  },
+  onLastGame: (lastGame) => {
+    if (!lastGame) {
+      mpStandingsTableEl.hidden = true;
+      mpStandingsTableEl.replaceChildren();
+      mpStandingsEmptyEl.hidden = false;
+      return;
+    }
+    const { names, winnerIndex, state } = lastGame;
+    const youWins = winnerIndex !== null && winnerIndex === 0;
+    const oppWins = winnerIndex !== null && winnerIndex === 1;
+    const { youName, oppName, rows } = mpScoreTable(state, names, 0);
+    mpStandingsEmptyEl.hidden = true;
+    mpStandingsTableEl.hidden = false;
+    buildScoreTable(mpStandingsTableEl, youName, oppName, rows, youWins, oppWins);
   },
 });
 
@@ -1306,11 +1329,9 @@ function renderMpGameOver(
   const eloLine = mpEloText(elo);
   goMpEloEl.hidden = eloLine === null;
   goMpEloEl.textContent = eloLine ?? "";
-
-  // Mirror the same breakdown into the persistent standings panel.
-  mpStandingsEmptyEl.hidden = true;
-  mpStandingsTableEl.hidden = false;
-  buildScoreTable(mpStandingsTableEl, youName, oppName, rows, youWins, oppWins);
+  // The standings panel's last-game table is driven separately by
+  // onLastGame (server-tracked, so it's correct for latecomers too) — the
+  // "room" broadcast carrying it arrives before this game_over/onMatchOver.
 }
 
 /**

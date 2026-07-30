@@ -3,12 +3,55 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { GameState } from "@mamba/engine";
 import { RoomManager, type Seat } from "./rooms.ts";
 
 function seat(id: string, name: string): Seat {
   return {
     user: { userId: id, displayName: name },
     send: () => undefined,
+  };
+}
+
+function fakePlayer() {
+  return {
+    body: [],
+    direction: "Right" as const,
+    score: 0,
+    survivalScore: 0,
+    winBonus: 0,
+    level: 1,
+    pelletsEatenThisLife: 0,
+    moltThreshold: 12,
+    alive: false,
+    blueValue: 1,
+    greenValue: 10,
+  };
+}
+
+function fakeState(): GameState {
+  return {
+    width: 10,
+    height: 10,
+    players: [fakePlayer(), fakePlayer()],
+    snake: [],
+    direction: "Right",
+    walls: [],
+    bluePellets: [],
+    greenPellets: [],
+    yellowPellet: null,
+    score: 0,
+    survivalScore: 0,
+    winBonus: 0,
+    level: 1,
+    pelletsEatenThisLife: 0,
+    moltThreshold: 12,
+    netScore: 0,
+    status: "gameover",
+    tick: 1,
+    blueValue: 1,
+    greenValue: 10,
+    events: [],
   };
 }
 
@@ -25,13 +68,26 @@ describe("RoomManager", () => {
     expect(result.room.code).toHaveLength(6);
   });
 
-  it("lists only public waiting rooms", () => {
+  it("lists only public rooms", () => {
     const mgr = new RoomManager();
     mgr.create(seat("a", "Alice"), "small", "public");
     mgr.create(seat("b", "Bob"), "large", "private");
     const list = mgr.listPublic();
     expect(list).toHaveLength(1);
     expect(list[0].hostName).toBe("Alice");
+  });
+
+  it("still lists a finished public room (watch-only, waiting for rematch)", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    created.room.status = "finished";
+    const list = mgr.listPublic();
+    expect(list).toHaveLength(1);
+    expect(list[0].status).toBe("finished");
   });
 
   it("rejects a third joiner", () => {
@@ -86,6 +142,48 @@ describe("RoomManager", () => {
     expect(created.room.game).not.toBeNull();
     const snap = mgr.snapshot(created.room);
     expect(snap.players.every((p) => p.rematchWanted === false)).toBe(true);
+  });
+
+  it("keeps the wins tally across a same-pair rematch", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.join(seat("b", "Bob"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+    mgr.recordResult(created.room, 0, fakeState(), ["Alice", "Bob"]);
+    expect(created.room.wins).toEqual([1, 0]);
+    created.room.status = "finished";
+    created.room.game = null;
+    mgr.requestRematch(created.room, 0);
+    mgr.requestRematch(created.room, 1);
+    expect(created.room.status).toBe("readying");
+    expect(created.room.wins).toEqual([1, 0]);
+    expect(created.room.lastGame).not.toBeNull();
+    expect(mgr.snapshot(created.room).wins).toEqual([1, 0]);
+  });
+
+  it("resets the wins tally when a departed player is replaced", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(mgr.join(seat("b", "Bob"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+    mgr.recordResult(created.room, 0, fakeState(), ["Alice", "Bob"]);
+    expect(created.room.wins).toEqual([1, 0]);
+
+    mgr.leave("b");
+    expect(created.room.status).toBe("waiting");
+    expect(mgr.join(seat("c", "Carol"), created.room.code).ok).toBe(true);
+    expect(mgr.enterPregame(created.room)).toBeNull();
+
+    expect(created.room.wins).toEqual([0, 0]);
+    expect(created.room.lastGame).toBeNull();
   });
 
   it("rejects spectating a private room", () => {

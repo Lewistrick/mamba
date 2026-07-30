@@ -31,8 +31,15 @@ export interface PublicRoomInfo {
   sizeId: FieldSizeId;
   hostName: string;
   playerCount: number;
-  /** "waiting" rooms can be joined; any other (non-finished) status can only be watched. */
+  /** "waiting" rooms can be joined; any other status (including "finished") can only be watched. */
   status: RoomStatus;
+}
+
+/** Most recent finished game in a room, kept until the seat pairing changes. */
+export interface RoomLastGame {
+  state: GameState;
+  names: [string, string];
+  winnerIndex: number | null;
 }
 
 /** Snapshot sent to clients. */
@@ -52,6 +59,10 @@ export interface RoomSnapshot {
    * across the broadcast the way the rest of this snapshot is.
    */
   yourQueuePosition: number | null;
+  /** Games won per current seat index, for this seat pairing only. */
+  wins: [number, number];
+  /** Most recent finished game for the current seat pairing, or null. */
+  lastGame: RoomLastGame | null;
 }
 
 /** Client → server. */
