@@ -443,8 +443,10 @@ p.go-too-low {
   margin: 0;
   max-width: min(320px, 90%);
   font-size: 0.8rem;
-  color: var(--accent-blue);
-  text-decoration: underline;
+  color: var(--accent-yellow);
+  border: 1px solid var(--border);
+  border-color: var(--muted);
+  padding: 5px;
   cursor: default;
 }
 
