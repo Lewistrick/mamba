@@ -656,8 +656,10 @@ export class Game {
   }
 
   /**
-   * Awards `100 × level` to the sole survivor in a 2-player game.
-   * Head-on (both dead) grants no win bonus.
+   * Awards `100 + (winner's level − loser's level)` to the sole survivor in
+   * a 2-player game — a flat bonus for winning, nudged by the level gap
+   * rather than scaling with level outright (which almost always favored
+   * whoever simply survived longer). Head-on (both dead) grants no bonus.
    */
   private maybeAwardWinBonus(): void {
     if (this.playerCount < 2) {
@@ -671,7 +673,8 @@ export class Game {
     if (winner.winBonus > 0) {
       return;
     }
-    const bonus = 100 * winner.level;
+    const loser = this.players.find((p) => p !== winner)!;
+    const bonus = 100 + (winner.level - loser.level);
     winner.score += bonus;
     winner.winBonus += bonus;
   }

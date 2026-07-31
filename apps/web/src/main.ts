@@ -1705,7 +1705,15 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === "Enter" || event.key === " ") {
+  if (event.key === "Enter") {
+    const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    if (readyOverlay && !readyOverlay.hidden && readyToggle && !readyToggle.disabled) {
+      event.preventDefault();
+      readyToggle.checked = !readyToggle.checked;
+      readyToggle.dispatchEvent(new Event("change"));
+      return;
+    }
     if (screen !== "playing") {
       event.preventDefault();
       startGame();
@@ -1713,13 +1721,10 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === "r" || event.key === "R") {
-    const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
-    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
-    if (readyOverlay && !readyOverlay.hidden && readyToggle && !readyToggle.disabled) {
+  if (event.key === " ") {
+    if (screen !== "playing") {
       event.preventDefault();
-      readyToggle.checked = !readyToggle.checked;
-      readyToggle.dispatchEvent(new Event("change"));
+      startGame();
     }
     return;
   }

@@ -41,7 +41,7 @@ See [`.claude/plans/mamba-full-implementation-plan.md`](.claude/plans/mamba-full
 | Blue pellets | Initial count `5–12`; eat → length +1, score `min(level, 10)`, spawn **one** replacement |
 | Green pellet | When a spawn lands on a wall; worth `min(level × 10, 100)`; 10% chance adjacent walls in one direction also turn green; eat → spawn **two** pellets |
 | Survival (vs AI / online) | Every second while alive, score `+level` (HUD: Time); each snake uses its own level |
-| Win bonus (vs AI / online) | Sole survivor gets `+100 × level`; head-on (both die) → no win bonus |
+| Win bonus (vs AI / online) | Sole survivor gets `+100 + (winner's level − loser's level)`; head-on (both die) → no win bonus |
 | Yellow pellet spawn (vs AI / online) | Spawns on molt (lime); ~5–10 Dijkstra ticks closer to the snake that molted; after 5 ticks TTL = Dijkstra + 5 (farther head), or `max(2 × Manhattan, 60s)` if unreachable; countdown in seconds (1 decimal under 10s; red under 3s); eat → spawn **two** pellets |
 | Death | Hit border, self, red wall, or (vs AI / online) the other snake |
 | Winner (vs AI / online) | Highest total score |
