@@ -8,6 +8,8 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 
 ![Multiplayer lobby](images/mp_lobby.png)
 
+[Gameplay video](images/gameplay.mp4)
+
 ## Current (Phase 7)
 
 ### Core
