@@ -902,7 +902,7 @@ export class Game {
   }
 
   /** Stop expanding the dual-wave search once this fraction of the board's cells have turned up as eligible dual-touched candidates. */
-  private static readonly YELLOW_CANDIDATE_FRACTION = 0.1;
+  private static readonly YELLOW_CANDIDATE_FRACTION = 0.125;
 
   /**
    * Picks an empty cell ~N Dijkstra ticks closer to the molting snake than
