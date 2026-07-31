@@ -1048,6 +1048,11 @@ export class Game {
     const worst = found[found.length - 1];
     const chosen = best5[randomInt(this.rng, 0, best5.length - 1)];
 
+    this.events.push({
+      type: "yellow_candidates",
+      positions: found.map((c) => c.pos),
+    });
+
     console.log("[yellow-spawn]", {
       tick: this.tickCount,
       molterIndex,

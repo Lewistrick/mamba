@@ -343,6 +343,15 @@ let inMpRoom = false;
 let pArmed = false;
 /** True while the local snake is frozen (the easter egg above) — any next keypress unfreezes it. */
 let frozen = false;
+/**
+ * Easter egg: secret hotkey A, solo/vs-AI only. While on, the game
+ * auto-pauses the instant the yellow-pellet spawn search runs, showing every
+ * candidate cell it considered as a yellow cross; unpausing reveals the
+ * board with the pellet already placed. A again turns admin mode off.
+ */
+let adminMode = false;
+/** Candidate cells to show as crosses, or null when there's nothing to show. */
+let adminCandidatePositions: Point[] | null = null;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -374,6 +383,22 @@ let profileChartXMode: ChartXMode = "date";
  *
  * @param view - Authoritative state, already remapped so players[0] is you.
  */
+/**
+ * Pulls the yellow-pellet candidate positions out of a tick's events, if
+ * the search ran this tick (admin-mode debug overlay only).
+ *
+ * @param events - This tick's events.
+ * @returns Candidate cells, or null if no search ran.
+ */
+function extractYellowCandidates(events: GameState["events"]): Point[] | null {
+  for (const e of events) {
+    if (e.type === "yellow_candidates") {
+      return e.positions.map((p) => ({ x: p.x, y: p.y }));
+    }
+  }
+  return null;
+}
+
 function resyncPrediction(view: GameState): void {
   const you = view.players[0];
   predictedBody = you.body.map((p) => ({ x: p.x, y: p.y }));
@@ -1630,6 +1655,7 @@ function startGame(): void {
   persistFromMenu();
   sounds.resume();
   paused = false;
+  adminCandidatePositions = null;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (settings.playMode === "ai") {
     game = Game.versusAi(settings.sizeId, seed);
@@ -1710,6 +1736,10 @@ function togglePause(): void {
   }
   paused = !paused;
   accumulator = 0;
+  if (!paused) {
+    // Reveal the board (pellet already placed) instead of the admin-mode candidate crosses.
+    adminCandidatePositions = null;
+  }
   setStatus(paused ? "Paused — P to resume" : "");
 }
 
@@ -1824,6 +1854,21 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === "a" || event.key === "A") {
+    if (event.repeat || mpPlaying || spectating) {
+      return;
+    }
+    event.preventDefault();
+    adminMode = !adminMode;
+    if (!adminMode && adminCandidatePositions) {
+      // Nothing left to review — resume instead of leaving the game stuck paused.
+      adminCandidatePositions = null;
+      paused = false;
+    }
+    setStatus(adminMode ? "Admin mode on" : "Admin mode off");
+    return;
+  }
+
   const dir = KEY_TO_DIR[event.key];
   if (dir) {
     pArmed = false;
@@ -1873,6 +1918,15 @@ function frame(now: number): void {
       state = game.tick();
       sounds.playEvents(state.events);
       accumulator -= step;
+      if (adminMode) {
+        const candidates = extractYellowCandidates(state.events);
+        if (candidates) {
+          adminCandidatePositions = candidates;
+          paused = true;
+          accumulator = 0;
+          break;
+        }
+      }
       if (state.status === "gameover") {
         onGameOver(state, game);
         break;
@@ -1919,6 +1973,7 @@ function frame(now: number): void {
     opponentLabel: aiBrain ? "AI" : "Opp",
     fair: mpPlaying || spectating,
     dimOpponent,
+    adminCandidates: adminCandidatePositions ?? undefined,
   });
 
   // Scores leaderboard doesn't apply in multiplayer — swap in the standings

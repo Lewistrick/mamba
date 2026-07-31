@@ -142,7 +142,13 @@ export class Renderer {
     state: GameState | null,
     overlay: "start" | "gameover" | "paused" | null = null,
     budget?: FitBudget,
-    options?: { opponentLabel?: string; fair?: boolean; dimOpponent?: boolean },
+    options?: {
+      opponentLabel?: string;
+      fair?: boolean;
+      dimOpponent?: boolean;
+      /** Admin-mode debug overlay: cells considered for the next yellow-pellet spawn, marked with a cross. */
+      adminCandidates?: readonly Point[];
+    },
   ): void {
     const width = state?.width ?? 40;
     const height = state?.height ?? 22;
@@ -166,6 +172,9 @@ export class Renderer {
       this.drawEmptyField(width, height);
     } else {
       this.drawField(state, dimOpponent);
+      if (options?.adminCandidates?.length) {
+        this.drawAdminCandidates(this.fieldOrigin(), options.adminCandidates);
+      }
     }
 
     if (overlay === "paused") {
@@ -523,6 +532,20 @@ export class Renderer {
     ctx.textBaseline = "middle";
     ctx.fillText(text, x, y);
     ctx.textAlign = "left";
+  }
+
+  /**
+   * Admin-mode debug overlay: marks every cell the yellow-pellet placement
+   * search considered, drawn on top of the field (including over the
+   * already-placed pellet) so nothing looks "placed" yet while paused.
+   *
+   * @param origin - Field origin.
+   * @param positions - Candidate cells.
+   */
+  private drawAdminCandidates(origin: Point, positions: readonly Point[]): void {
+    for (const p of positions) {
+      this.drawTextCell(origin, p, "X", COLORS.yellow, 0.8);
+    }
   }
 
   /**
