@@ -142,7 +142,7 @@ export class Renderer {
     state: GameState | null,
     overlay: "start" | "gameover" | "paused" | null = null,
     budget?: FitBudget,
-    options?: { opponentLabel?: string; fair?: boolean },
+    options?: { opponentLabel?: string; fair?: boolean; dimOpponent?: boolean },
   ): void {
     const width = state?.width ?? 40;
     const height = state?.height ?? 22;
@@ -155,6 +155,7 @@ export class Renderer {
     const { width: cssW, height: cssH } = this.logicalSize;
     const opponentLabel = options?.opponentLabel ?? "AI";
     const fair = options?.fair ?? false;
+    const dimOpponent = options?.dimOpponent ?? false;
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, cssW, cssH);
@@ -164,7 +165,7 @@ export class Renderer {
     if (state === null) {
       this.drawEmptyField(width, height);
     } else {
-      this.drawField(state);
+      this.drawField(state, dimOpponent);
     }
 
     if (overlay === "paused") {
@@ -275,8 +276,9 @@ export class Renderer {
    * Draws the playfield contents.
    *
    * @param state - Engine state.
+   * @param dimOpponent - Desaturate the opponent's snake (stale/disconnected).
    */
-  private drawField(state: GameState): void {
+  private drawField(state: GameState, dimOpponent = false): void {
     const origin = this.fieldOrigin();
     const { ctx } = this;
     const cell = this.cell;
@@ -299,7 +301,7 @@ export class Renderer {
     }
 
     for (let i = state.players.length - 1; i >= 0; i -= 1) {
-      this.drawSnakePlayer(origin, state.players[i], i === 0);
+      this.drawSnakePlayer(origin, state.players[i], i === 0, i === 1 && dimOpponent);
     }
   }
 
@@ -323,15 +325,26 @@ export class Renderer {
 
   /**
    * Draws one snake (human yellow or AI cyan).
+   *
+   * @param dim - Desaturate this snake — used for a multiplayer opponent
+   * whose position hasn't been refreshed by the server recently (stale or
+   * mid-reconnect), so it reads as "not live" rather than being guessed at.
    */
   private drawSnakePlayer(
     origin: Point,
     player: GameState["players"][number],
     human: boolean,
+    dim = false,
   ): void {
     const { body, direction } = player;
     if (body.length === 0) {
       return;
+    }
+
+    const { ctx } = this;
+    if (dim) {
+      ctx.save();
+      ctx.filter = "saturate(35%) brightness(80%)";
     }
 
     const bodyColor = human ? COLORS.snake : COLORS.snakeAi;
@@ -352,6 +365,10 @@ export class Renderer {
     const head = body[0];
     this.fillBlock(origin, head, headColor);
     this.drawSmileyHead(origin, head, direction, faceColor);
+
+    if (dim) {
+      ctx.restore();
+    }
   }
 
   /**

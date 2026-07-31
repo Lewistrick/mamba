@@ -16,6 +16,13 @@ import {
 } from "./mpClient.ts";
 import { submitScore } from "./leaderboard.ts";
 
+/** Reconnect attempts before giving up (with backoff, comfortably outlasts the server's 15s grace period). */
+const RECONNECT_MAX_ATTEMPTS = 8;
+const RECONNECT_BASE_DELAY_MS = 500;
+const RECONNECT_MAX_DELAY_MS = 4000;
+/** How long to wait for a "reconnected" message after auth succeeds before assuming the server's grace period already expired. */
+const RECONNECT_CONFIRM_TIMEOUT_MS = 3000;
+
 /**
  * Hides the multiplayer lobby after a match ends so GAME OVER can show alone
  * on the game shell (avoids stacking lobby + overlay side by side).
@@ -99,6 +106,7 @@ export interface MpUiHooks {
 export class MpLobbyController {
   private client: MpClient | null = null;
   private unsub: (() => void) | null = null;
+  private unsubClose: (() => void) | null = null;
   private room: RoomSnapshot | null = null;
   private openPromise: Promise<void> | null = null;
   private pregameShown = false;
@@ -115,6 +123,20 @@ export class MpLobbyController {
    * redundant "room" broadcast doesn't clobber it.
    */
   private hasLiveContent = false;
+  /**
+   * True once at least one real "state" (tick) message has arrived for the
+   * current match, until game_over/a fresh pregame/leaving. `room.status`
+   * isn't reliable for this — the server only re-broadcasts a "room"
+   * snapshot on lobby-ish events (ready toggles, join, etc.), not on every
+   * tick, so it goes stale at "countdown" for the whole match. This is what
+   * actually answers "was the socket mid-match when it dropped".
+   */
+  private matchTicking = false;
+  /** True while auto-retrying a mid-match connection drop. */
+  private reconnecting = false;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectConfirmTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * @param root - #mp-page element.
@@ -250,6 +272,8 @@ export class MpLobbyController {
       this.client = new MpClient(url);
       this.unsub?.();
       this.unsub = this.client.onMessage((msg) => this.onMessage(msg));
+      this.unsubClose?.();
+      this.unsubClose = this.client.onClose(() => this.onSocketClosed());
       await this.client.connect(session.access_token);
     } catch (err) {
       this.client = null;
@@ -266,6 +290,8 @@ export class MpLobbyController {
   close(): void {
     this.openPromise = null;
     this.clearCountdownUi();
+    this.clearReconnectState();
+    this.matchTicking = false;
     this.pregameShown = false;
     this.spectating = false;
     this.resetQueueToggle();
@@ -277,6 +303,8 @@ export class MpLobbyController {
     this.client = null;
     this.unsub?.();
     this.unsub = null;
+    this.unsubClose?.();
+    this.unsubClose = null;
     this.room = null;
     this.hooks.onMatchPlaying(false);
     this.root.hidden = true;
@@ -292,6 +320,108 @@ export class MpLobbyController {
     if (lobby) {
       lobby.hidden = false;
     }
+  }
+
+  /**
+   * Cancels any in-progress reconnect attempt/timers without touching room
+   * state — used both by a successful reconnect and by close().
+   */
+  private clearReconnectState(): void {
+    this.reconnecting = false;
+    this.reconnectAttempt = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.reconnectConfirmTimer) {
+      clearTimeout(this.reconnectConfirmTimer);
+      this.reconnectConfirmTimer = null;
+    }
+  }
+
+  /**
+   * Fired when the socket drops without close() having been called. Only
+   * mid-match drops get the auto-reconnect treatment — anything else (still
+   * in the lobby, readying, etc.) falls through to the existing "connection
+   * closed" error handling, since no match progress is at risk there.
+   */
+  private onSocketClosed(): void {
+    if (!this.matchTicking || this.reconnecting) {
+      return;
+    }
+    this.reconnecting = true;
+    this.reconnectAttempt = 0;
+    this.hooks.setStatus("Connection lost — reconnecting…");
+    this.attemptReconnect();
+  }
+
+  /**
+   * One reconnect attempt: re-authenticates, then waits briefly for the
+   * server's "reconnected" confirmation (handled in onMessage). Retries with
+   * capped backoff on failure to even connect; gives up after
+   * {@link RECONNECT_MAX_ATTEMPTS} or if the confirmation never arrives
+   * (the server's grace period already expired).
+   */
+  private attemptReconnect(): void {
+    if (!this.reconnecting) {
+      return;
+    }
+    this.reconnectAttempt += 1;
+    if (this.reconnectAttempt > RECONNECT_MAX_ATTEMPTS) {
+      this.giveUpReconnecting();
+      return;
+    }
+    this.ensureConnected()
+      .then(() => {
+        if (!this.reconnecting) {
+          return;
+        }
+        if (!this.client?.connected) {
+          // connectFresh() no-op'd (e.g. session momentarily unavailable)
+          // rather than actually connecting — treat like any other failure.
+          this.scheduleReconnectRetry();
+          return;
+        }
+        // auth succeeded — if the server still holds a disconnected seat for
+        // us, "reconnected" arrives right behind auth_ok and is handled in
+        // onMessage. If not (grace period already expired), nothing further
+        // arrives, so give up once this window passes.
+        this.reconnectConfirmTimer = setTimeout(() => {
+          this.reconnectConfirmTimer = null;
+          if (this.reconnecting) {
+            this.giveUpReconnecting();
+          }
+        }, RECONNECT_CONFIRM_TIMEOUT_MS);
+      })
+      .catch(() => {
+        this.scheduleReconnectRetry();
+      });
+  }
+
+  /**
+   * Schedules the next {@link attemptReconnect} call with capped exponential
+   * backoff, unless reconnecting was cancelled in the meantime.
+   */
+  private scheduleReconnectRetry(): void {
+    if (!this.reconnecting) {
+      return;
+    }
+    const delay = Math.min(
+      RECONNECT_MAX_DELAY_MS,
+      RECONNECT_BASE_DELAY_MS * 2 ** (this.reconnectAttempt - 1),
+    );
+    this.reconnectTimer = setTimeout(() => this.attemptReconnect(), delay);
+  }
+
+  /**
+   * Reconnect budget exhausted, or the server confirmed the grace period
+   * already lapsed — the match is gone. Return cleanly to the lobby instead
+   * of leaving the UI stuck on "reconnecting…" forever.
+   */
+  private giveUpReconnecting(): void {
+    this.close();
+    this.hooks.setStatus("Your match ended while you were disconnected.");
+    this.hooks.showGameShell();
   }
 
   /**
@@ -489,6 +619,22 @@ export class MpLobbyController {
         }
         this.client?.listPublic();
         break;
+      case "reconnected": {
+        this.clearReconnectState();
+        this.room = msg.room;
+        this.spectating = false;
+        this.awaitingOpponent = false;
+        // Resume, not a fresh entry — skip the "opponent joined" sound/flow.
+        this.pregameShown = true;
+        this.expectRematchPregame = false;
+        this.renderRoom(msg.room);
+        this.hooks.setStatus("Reconnected");
+        this.setMatchUi(true);
+        // The very next message is the authoritative catch-up (state), which
+        // flows through the existing "state" handler below unchanged.
+        this.client?.resendLastInput();
+        break;
+      }
       case "error":
         if (status) {
           status.textContent = msg.message;
@@ -507,6 +653,13 @@ export class MpLobbyController {
             msg.room.players.find((p) => p.index === i)?.displayName ?? "";
           this.hooks.onStandings([bySeat(0), bySeat(1)], msg.room.wins);
           this.hooks.onLastGame(msg.room.lastGame);
+        }
+        if (msg.room.status === "playing") {
+          // A player only ever learns their *opponent* is disconnected this
+          // way — while your own seat is down you're not connected to
+          // receive this broadcast at all, so no need to distinguish seats.
+          const opponentDisconnected = msg.room.players.some((p) => p.disconnected);
+          this.hooks.setStatus(opponentDisconnected ? "Opponent disconnected — reconnecting…" : "");
         }
         if (msg.room.status === "finished") {
           this.updateRematchStatus(msg.room);
@@ -553,6 +706,7 @@ export class MpLobbyController {
       case "pregame": {
         // Arriving here always means we're seated (including just-promoted
         // spectators) — drop any spectator UI left over from watching.
+        this.matchTicking = false;
         this.spectating = false;
         this.resetQueueToggle();
         this.awaitingOpponent = false;
@@ -571,6 +725,7 @@ export class MpLobbyController {
         break;
       }
       case "countdown": {
+        this.matchTicking = false;
         const view = remapStateForYou(msg.state, msg.youIndex);
         this.hooks.onCountdown(view, msg.youIndex, msg.names);
         this.hooks.playMatchCountdown();
@@ -580,6 +735,7 @@ export class MpLobbyController {
         break;
       }
       case "state": {
+        this.matchTicking = true;
         const view = remapStateForYou(msg.state, msg.youIndex);
         this.clearCountdownUi();
         this.hooks.hideReadyOverlay();
@@ -588,6 +744,7 @@ export class MpLobbyController {
         break;
       }
       case "game_over": {
+        this.matchTicking = false;
         const view = remapStateForYou(msg.state, msg.youIndex);
         this.pregameShown = false;
         this.expectRematchPregame = false;

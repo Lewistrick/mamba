@@ -45,6 +45,10 @@ export interface Room {
   countdownTimer: ReturnType<typeof setTimeout> | null;
   scoresSaved: boolean;
   eloApplied: boolean;
+  /** Per-seat: true while that player's socket is down but within the reconnect grace period. */
+  disconnected: [boolean, boolean];
+  /** Pending forfeit-on-expiry timer per seat, or null if not disconnected. */
+  disconnectTimer: [ReturnType<typeof setTimeout> | null, ReturnType<typeof setTimeout> | null];
   /** Read-only viewers of a public room. */
   spectators: Seat[];
   /** Spectators who asked to take the next vacated seat, in arrival order. */
@@ -112,6 +116,8 @@ export class RoomManager {
       countdownTimer: null,
       scoresSaved: false,
       eloApplied: false,
+      disconnected: [false, false],
+      disconnectTimer: [null, null],
       spectators: [],
       joinQueue: [],
       wins: [0, 0],
@@ -358,6 +364,7 @@ export class RoomManager {
         index: i,
         ready: room.ready[i] ?? false,
         rematchWanted: room.rematch[i] ?? false,
+        disconnected: room.disconnected[i] ?? false,
       });
     }
     const queuePos = forUserId
@@ -413,6 +420,7 @@ export class RoomManager {
     room.tick = 0;
     room.scoresSaved = false;
     room.eloApplied = false;
+    this.clearDisconnectState(room);
     const pairing = [room.seats[0].user.userId, room.seats[1].user.userId]
       .sort()
       .join(",");
@@ -505,6 +513,7 @@ export class RoomManager {
     room.tick = 0;
     room.scoresSaved = false;
     room.eloApplied = false;
+    this.clearDisconnectState(room);
     return null;
   }
 
@@ -630,6 +639,11 @@ export class RoomManager {
     }
     room.status = "finished";
     room.rematch = [false, false];
+    // The match can end here while a disconnected seat's grace timer is
+    // still pending (e.g. their snake died on its own, mid-disconnect, from
+    // continuing straight) — clear it so it can't also fire a stale forfeit
+    // against an already-finished match.
+    this.clearDisconnectState(room);
     onGameOver(room, state);
   }
 
@@ -684,6 +698,87 @@ export class RoomManager {
         return;
       }
     }
+  }
+
+  /**
+   * Clears any pending grace-period timer and resets both seats' disconnect
+   * flags. Safe to call even when nothing is pending.
+   *
+   * @param room - Room.
+   */
+  private clearDisconnectState(room: Room): void {
+    for (let i = 0; i < 2; i += 1) {
+      const timer = room.disconnectTimer[i];
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+    room.disconnected = [false, false];
+    room.disconnectTimer = [null, null];
+  }
+
+  /**
+   * Marks a seated player disconnected instead of removing them outright,
+   * and starts a grace-period timer. Only acts while the match is actually
+   * playing — a disconnect during readying/countdown/etc. is handled by the
+   * caller falling straight through to {@link leave} instead, since no match
+   * progress is at stake yet. Deliberately leaves `seats`/`game`/`timer`
+   * untouched: the tick loop keeps running exactly as before, so whatever
+   * happens during the gap (the disconnected snake continuing straight, and
+   * possibly dying) is simply what a reconnecting client will see once
+   * caught up — nothing needs to be replayed.
+   *
+   * @param userId - Player whose socket just closed.
+   * @param gracePeriodMs - How long to wait before treating this as a real leave.
+   * @param onExpired - Called with `userId` if they haven't reconnected in time.
+   * @returns True if a grace timer was started (i.e. this was a mid-match disconnect).
+   */
+  disconnectSeat(
+    userId: string,
+    gracePeriodMs: number,
+    onExpired: (userId: string) => void,
+  ): boolean {
+    const seated = this.findSeat(userId);
+    if (!seated || seated.room.status !== "playing") {
+      return false;
+    }
+    const { room, index } = seated;
+    const timer = room.disconnectTimer[index];
+    if (timer) {
+      clearTimeout(timer);
+    }
+    room.disconnected[index] = true;
+    room.disconnectTimer[index] = setTimeout(() => {
+      room.disconnectTimer[index] = null;
+      if (room.disconnected[index]) {
+        onExpired(userId);
+      }
+    }, gracePeriodMs);
+    return true;
+  }
+
+  /**
+   * Re-attaches a fresh socket to a seat that was marked disconnected,
+   * cancelling its grace-period timer.
+   *
+   * @param userId - Reconnecting player.
+   * @param seat - Their new socket + identity.
+   * @returns The room + seat index, or null if there was nothing to reattach to.
+   */
+  reattachSeat(userId: string, seat: Seat): { room: Room; index: number } | null {
+    const seated = this.findSeat(userId);
+    if (!seated || !seated.room.disconnected[seated.index]) {
+      return null;
+    }
+    const { room, index } = seated;
+    const timer = room.disconnectTimer[index];
+    if (timer) {
+      clearTimeout(timer);
+    }
+    room.disconnected[index] = false;
+    room.disconnectTimer[index] = null;
+    room.seats[index] = seat;
+    return { room, index };
   }
 
   /**

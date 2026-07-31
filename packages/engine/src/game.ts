@@ -2,42 +2,30 @@
  * Deterministic headless Mamba game engine (solo or human vs AI).
  */
 
-import { createRng, randomInt } from "./rng.ts";
 import { dijkstraDistance } from "./pathfinding.ts";
+import { createRng, randomInt } from "./rng.ts";
 import { versusNetScore } from "./scoring.ts";
 import {
-  MEDIUM_SIZE,
-  START_LENGTH,
-  TICKS_PER_SECOND,
-  YELLOW_FALLBACK_MIN_SECONDS,
-  YELLOW_GRACE_TICKS,
-  FIELD_SIZES,
-  type Direction,
-  type FieldSizeId,
-  type GameConfig,
-  type GameEvent,
-  type GameState,
-  type GameStatus,
-  type Point,
-  type SnakePlayerState,
-  type YellowPellet,
+    DIRECTION_DELTA as DELTA,
+    FIELD_SIZES,
+    MEDIUM_SIZE,
+    OPPOSITE_DIRECTION as OPPOSITE,
+    START_LENGTH,
+    TICKS_PER_SECOND,
+    YELLOW_FALLBACK_MIN_SECONDS,
+    YELLOW_GRACE_TICKS,
+    type Direction,
+    type FieldSizeId,
+    type GameConfig,
+    type GameEvent,
+    type GameState,
+    type GameStatus,
+    type Point,
+    type SnakePlayerState,
+    type YellowPellet,
 } from "./types.ts";
 
 export { pelletScore, versusHudNetScore, versusNetScore } from "./scoring.ts";
-
-const OPPOSITE: Record<Direction, Direction> = {
-  Up: "Down",
-  Down: "Up",
-  Left: "Right",
-  Right: "Left",
-};
-
-const DELTA: Record<Direction, Point> = {
-  Up: { x: 0, y: -1 },
-  Down: { x: 0, y: 1 },
-  Left: { x: -1, y: 0 },
-  Right: { x: 1, y: 0 },
-};
 
 const DIRECTIONS: Direction[] = ["Up", "Down", "Left", "Right"];
 
@@ -656,8 +644,8 @@ export class Game {
   }
 
   /**
-   * Awards `100 + (winner's level − loser's level)` to the sole survivor in
-   * a 2-player game — a flat bonus for winning, nudged by the level gap
+   * Awards `100 + 30 × (winner's level − loser's level)` to the sole survivor
+   * in a 2-player game — a flat bonus for winning, nudged by the level gap
    * rather than scaling with level outright (which almost always favored
    * whoever simply survived longer). Head-on (both dead) grants no bonus.
    */
@@ -674,7 +662,7 @@ export class Game {
       return;
     }
     const loser = this.players.find((p) => p !== winner)!;
-    const bonus = 100 + (winner.level - loser.level);
+    const bonus = 100 + 30 * (winner.level - loser.level);
     winner.score += bonus;
     winner.winBonus += bonus;
   }

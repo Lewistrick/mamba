@@ -23,6 +23,8 @@ export interface RoomPlayerInfo {
   ready: boolean;
   /** True when this seat asked to rematch after a finished game. */
   rematchWanted: boolean;
+  /** True while this seat's socket is down but still within the reconnect grace period. */
+  disconnected: boolean;
 }
 
 /** Public listing row. */
@@ -85,6 +87,12 @@ export type ClientMessage =
 /** Server → client. */
 export type ServerMessage =
   | { type: "auth_ok"; userId: string; displayName: string }
+  | {
+      /** Sent right after auth_ok when this connection is re-attaching to a seat it disconnected from mid-match, instead of a fresh join. */
+      type: "reconnected";
+      youIndex: number;
+      room: RoomSnapshot;
+    }
   | { type: "error"; message: string }
   | { type: "room"; room: RoomSnapshot }
   | { type: "public_rooms"; rooms: PublicRoomInfo[] }

@@ -2,9 +2,9 @@
  * Unit tests for RoomManager lobby rules.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameState } from "@mamba/engine";
-import { RoomManager, type Seat } from "./rooms.ts";
+import { RoomManager, type Room, type Seat } from "./rooms.ts";
 
 function seat(id: string, name: string): Seat {
   return {
@@ -55,7 +55,44 @@ function fakeState(): GameState {
   };
 }
 
+/**
+ * Creates a two-seat room and drives it all the way to "playing".
+ *
+ * @returns The manager and the now-playing room.
+ */
+function startPlayingRoom(): { mgr: RoomManager; room: Room } {
+  const mgr = new RoomManager();
+  const created = mgr.create(seat("a", "Alice"), "medium", "public");
+  if (!created.ok) {
+    throw new Error("room creation failed");
+  }
+  const room = created.room;
+  mgr.join(seat("b", "Bob"), room.code);
+  mgr.enterPregame(room);
+  mgr.setReady(room, 0, true);
+  mgr.setReady(room, 1, true);
+  mgr.beginCountdown(room);
+  mgr.startMatch(
+    room,
+    () => undefined,
+    () => undefined,
+  );
+  // These tests only care that status === "playing", not the real tick
+  // loop — stop it immediately so it can't independently reach gameover
+  // (and clear disconnect state) while a test advances fake timers.
+  if (room.timer) {
+    clearInterval(room.timer);
+    room.timer = null;
+  }
+  return { mgr, room };
+}
+
 describe("RoomManager", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+
   it("creates a private non-spectatable room", () => {
     const mgr = new RoomManager();
     const result = mgr.create(seat("a", "Alice"), "medium", "private");
@@ -340,6 +377,80 @@ describe("RoomManager", () => {
     mgr.leave("a");
     expect(received).toHaveLength(1);
     expect(JSON.parse(received[0])).toMatchObject({ type: "spectate_ended" });
+  });
+
+  it("does not start a grace timer for a disconnect before the match is playing", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice"), "medium", "public");
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    mgr.join(seat("b", "Bob"), created.room.code);
+    mgr.enterPregame(created.room);
+    expect(created.room.status).toBe("readying");
+
+    expect(mgr.disconnectSeat("a", 1000, () => undefined)).toBe(false);
+    expect(created.room.disconnected).toEqual([false, false]);
+  });
+
+  it("returns false disconnecting a user who isn't seated anywhere", () => {
+    const mgr = new RoomManager();
+    expect(mgr.disconnectSeat("nobody", 1000, () => undefined)).toBe(false);
+  });
+
+  it("marks a mid-match seat disconnected and fires onExpired if not reattached", () => {
+    vi.useFakeTimers();
+    const { mgr, room } = startPlayingRoom();
+
+    const expired: string[] = [];
+    expect(mgr.disconnectSeat("a", 1000, (userId) => expired.push(userId))).toBe(true);
+    expect(room.disconnected).toEqual([true, false]);
+
+    vi.advanceTimersByTime(999);
+    expect(expired).toHaveLength(0);
+    vi.advanceTimersByTime(2);
+    expect(expired).toEqual(["a"]);
+  });
+
+  it("reattaches a disconnected seat and cancels its grace timer", () => {
+    vi.useFakeTimers();
+    const { mgr, room } = startPlayingRoom();
+
+    const expired: string[] = [];
+    mgr.disconnectSeat("a", 1000, (userId) => expired.push(userId));
+
+    const freshSocket = seat("a", "Alice");
+    const result = mgr.reattachSeat("a", freshSocket);
+    expect(result?.index).toBe(0);
+    expect(room.disconnected).toEqual([false, false]);
+    expect(room.seats[0]).toBe(freshSocket);
+
+    // Grace timer must actually be cancelled, not just flagged — advancing
+    // well past the original deadline should not fire onExpired.
+    vi.advanceTimersByTime(5000);
+    expect(expired).toHaveLength(0);
+  });
+
+  it("reattachSeat returns null when the seat isn't marked disconnected", () => {
+    const { mgr } = startPlayingRoom();
+    expect(mgr.reattachSeat("a", seat("a", "Alice"))).toBeNull();
+  });
+
+  it("clears a pending disconnect grace timer when the match finishes on its own", () => {
+    vi.useFakeTimers();
+    const { mgr, room } = startPlayingRoom();
+
+    const expired: string[] = [];
+    mgr.disconnectSeat("a", 1000, (userId) => expired.push(userId));
+    expect(room.disconnected[0]).toBe(true);
+
+    mgr.finishMatch(room, fakeState(), () => undefined);
+    expect(room.disconnected).toEqual([false, false]);
+
+    // The stale timer must be cancelled, not just superseded.
+    vi.advanceTimersByTime(5000);
+    expect(expired).toHaveLength(0);
   });
 
   it("picks the higher score as winner", () => {

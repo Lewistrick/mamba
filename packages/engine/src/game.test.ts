@@ -638,7 +638,7 @@ describe("Game", () => {
     expect(game.getState().netScore).toBe(60);
   });
 
-  it("awards win bonus of 100 + level gap when the AI dies and the player survives", () => {
+  it("awards win bonus of 100 + 30 × level gap when the AI dies and the player survives", () => {
     const game = Game.versusAi("medium", 3);
     const g = game as unknown as {
       players: Array<{
@@ -688,11 +688,11 @@ describe("Game", () => {
     expect(state.status).toBe("gameover");
     expect(state.players[0].alive).toBe(true);
     expect(state.players[1].alive).toBe(false);
-    // 100 + (winner level 3 − loser level 1)
-    expect(state.winBonus).toBe(102);
-    expect(state.players[0].winBonus).toBe(102);
-    expect(state.score).toBe(112);
-    expect(state.netScore).toBe(105);
+    // 100 + 30 × (winner level 3 − loser level 1)
+    expect(state.winBonus).toBe(160);
+    expect(state.players[0].winBonus).toBe(160);
+    expect(state.score).toBe(170);
+    expect(state.netScore).toBe(163);
   });
 
   it("does not award win bonus on a head-on collision", () => {

@@ -5,6 +5,22 @@
 /** Cardinal movement directions. */
 export type Direction = "Up" | "Down" | "Left" | "Right";
 
+/** The reverse of each direction (a snake can never turn directly into this). */
+export const OPPOSITE_DIRECTION: Record<Direction, Direction> = {
+  Up: "Down",
+  Down: "Up",
+  Left: "Right",
+  Right: "Left",
+};
+
+/** Grid delta for one step in each direction. */
+export const DIRECTION_DELTA: Record<Direction, Point> = {
+  Up: { x: 0, y: -1 },
+  Down: { x: 0, y: 1 },
+  Left: { x: -1, y: 0 },
+  Right: { x: 1, y: 0 },
+};
+
 /** Lifecycle status of a run. */
 export type GameStatus = "playing" | "gameover";
 
