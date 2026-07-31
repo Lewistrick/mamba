@@ -146,8 +146,12 @@ export class Renderer {
       opponentLabel?: string;
       fair?: boolean;
       dimOpponent?: boolean;
-      /** Admin-mode debug overlay: cells considered for the next yellow-pellet spawn, marked with a cross. */
-      adminCandidates?: readonly Point[];
+      /**
+       * Admin-mode debug overlay: cells considered for the next yellow-pellet
+       * spawn, each labeled with dOpponent − dMolter (negative = actually
+       * closer to the opponent).
+       */
+      adminCandidates?: readonly { pos: Point; diff: number }[];
     },
   ): void {
     const width = state?.width ?? 40;
@@ -535,16 +539,20 @@ export class Renderer {
   }
 
   /**
-   * Admin-mode debug overlay: marks every cell the yellow-pellet placement
-   * search considered, drawn on top of the field (including over the
-   * already-placed pellet) so nothing looks "placed" yet while paused.
+   * Admin-mode debug overlay: labels every cell the yellow-pellet placement
+   * search considered with dOpponent − dMolter, drawn on top of the field
+   * (including over the already-placed pellet) so nothing looks "placed"
+   * yet while paused.
    *
    * @param origin - Field origin.
-   * @param positions - Candidate cells.
+   * @param candidates - Candidate cells with their distance difference.
    */
-  private drawAdminCandidates(origin: Point, positions: readonly Point[]): void {
-    for (const p of positions) {
-      this.drawTextCell(origin, p, "X", COLORS.yellow, 0.8);
+  private drawAdminCandidates(
+    origin: Point,
+    candidates: readonly { pos: Point; diff: number }[],
+  ): void {
+    for (const c of candidates) {
+      this.drawTextCell(origin, c.pos, String(c.diff), COLORS.yellow, 0.5);
     }
   }
 

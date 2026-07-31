@@ -152,8 +152,13 @@ export type GameEvent =
   | { type: "eat_yellow"; player: number }
   | { type: "molt"; player: number }
   | { type: "die"; player: number }
-  /** Every cell considered as a yellow-pellet spawn candidate this molt — for the client's "admin mode" debug overlay, otherwise unused. */
-  | { type: "yellow_candidates"; positions: Point[] };
+  /**
+   * Every cell considered as a yellow-pellet spawn candidate this molt, with
+   * how much closer to the molter than the opponent it is (`dOpponent −
+   * dMolter`; negative means actually closer to the opponent) — for the
+   * client's "admin mode" debug overlay, otherwise unused.
+   */
+  | { type: "yellow_candidates"; candidates: { pos: Point; diff: number }[] };
 
 /** Ticks to wait after molt before assigning yellow TTL via Dijkstra. */
 export const YELLOW_GRACE_TICKS = 5;

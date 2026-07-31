@@ -345,13 +345,13 @@ let pArmed = false;
 let frozen = false;
 /**
  * Easter egg: secret hotkey A, solo/vs-AI only. While on, the game
- * auto-pauses the instant the yellow-pellet spawn search runs, showing every
- * candidate cell it considered as a yellow cross; unpausing reveals the
- * board with the pellet already placed. A again turns admin mode off.
+ * auto-pauses the instant the yellow-pellet spawn search runs, labeling every
+ * candidate cell it considered with dOpponent − dMolter; unpausing reveals
+ * the board with the pellet already placed. A again turns admin mode off.
  */
 let adminMode = false;
-/** Candidate cells to show as crosses, or null when there's nothing to show. */
-let adminCandidatePositions: Point[] | null = null;
+/** Candidate cells to label, or null when there's nothing to show. */
+let adminCandidates: { pos: Point; diff: number }[] | null = null;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
@@ -384,16 +384,16 @@ let profileChartXMode: ChartXMode = "date";
  * @param view - Authoritative state, already remapped so players[0] is you.
  */
 /**
- * Pulls the yellow-pellet candidate positions out of a tick's events, if
- * the search ran this tick (admin-mode debug overlay only).
+ * Pulls the yellow-pellet candidates out of a tick's events, if the search
+ * ran this tick (admin-mode debug overlay only).
  *
  * @param events - This tick's events.
- * @returns Candidate cells, or null if no search ran.
+ * @returns Candidate cells with dOpponent − dMolter, or null if no search ran.
  */
-function extractYellowCandidates(events: GameState["events"]): Point[] | null {
+function extractYellowCandidates(events: GameState["events"]): { pos: Point; diff: number }[] | null {
   for (const e of events) {
     if (e.type === "yellow_candidates") {
-      return e.positions.map((p) => ({ x: p.x, y: p.y }));
+      return e.candidates.map((c) => ({ pos: { x: c.pos.x, y: c.pos.y }, diff: c.diff }));
     }
   }
   return null;
@@ -1655,7 +1655,7 @@ function startGame(): void {
   persistFromMenu();
   sounds.resume();
   paused = false;
-  adminCandidatePositions = null;
+  adminCandidates = null;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (settings.playMode === "ai") {
     game = Game.versusAi(settings.sizeId, seed);
@@ -1737,8 +1737,8 @@ function togglePause(): void {
   paused = !paused;
   accumulator = 0;
   if (!paused) {
-    // Reveal the board (pellet already placed) instead of the admin-mode candidate crosses.
-    adminCandidatePositions = null;
+    // Reveal the board (pellet already placed) instead of the admin-mode candidate labels.
+    adminCandidates = null;
   }
   setStatus(paused ? "Paused — P to resume" : "");
 }
@@ -1860,9 +1860,9 @@ function onKeyDown(event: KeyboardEvent): void {
     }
     event.preventDefault();
     adminMode = !adminMode;
-    if (!adminMode && adminCandidatePositions) {
+    if (!adminMode && adminCandidates) {
       // Nothing left to review — resume instead of leaving the game stuck paused.
-      adminCandidatePositions = null;
+      adminCandidates = null;
       paused = false;
     }
     setStatus(adminMode ? "Admin mode on" : "Admin mode off");
@@ -1921,7 +1921,7 @@ function frame(now: number): void {
       if (adminMode) {
         const candidates = extractYellowCandidates(state.events);
         if (candidates) {
-          adminCandidatePositions = candidates;
+          adminCandidates = candidates;
           paused = true;
           accumulator = 0;
           break;
@@ -1973,7 +1973,7 @@ function frame(now: number): void {
     opponentLabel: aiBrain ? "AI" : "Opp",
     fair: mpPlaying || spectating,
     dimOpponent,
-    adminCandidates: adminCandidatePositions ?? undefined,
+    adminCandidates: adminCandidates ?? undefined,
   });
 
   // Scores leaderboard doesn't apply in multiplayer — swap in the standings

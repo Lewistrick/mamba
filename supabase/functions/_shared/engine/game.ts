@@ -901,8 +901,8 @@ export class Game {
     });
   }
 
-  /** Stop expanding the dual-wave search once this many eligible dual-touched cells are found. */
-  private static readonly YELLOW_CANDIDATE_TARGET = 50;
+  /** Stop expanding the dual-wave search once this fraction of the board's cells have turned up as eligible dual-touched candidates. */
+  private static readonly YELLOW_CANDIDATE_FRACTION = 0.1;
 
   /**
    * Picks an empty cell ~N Dijkstra ticks closer to the molting snake than
@@ -917,10 +917,26 @@ export class Game {
    * from both heads are known, so `dOpponent − dMolter` can be computed
    * directly. Dual touches occur earliest near the true bias boundary, so
    * they arrive in roughly increasing bias-error order — the search stops
-   * as soon as {@link YELLOW_CANDIDATE_TARGET} eligible ones are found
-   * (or both waves are fully exhausted), instead of flooding the whole
-   * board from both heads and then scanning every cell like the previous
-   * version did.
+   * once {@link YELLOW_CANDIDATE_FRACTION} of the board's cells have turned
+   * up as eligible ones (or both waves are fully exhausted), instead of
+   * flooding the whole board from both heads and then scanning every cell
+   * like the very first version did. Scaling the target with board size
+   * (rather than a fixed count) keeps the search proportionally as thorough
+   * on a small field as on a large one.
+   *
+   * An earlier revision tried biasing each wave toward the *other* head
+   * with a Manhattan-distance heuristic (A*), on the theory that a wave
+   * heading away from the other player can't contribute a good match. It
+   * measured no reliable speed win, a worse worst-case candidate in the
+   * pool (e.g. large field, opposite corners: avg worst biasError 10 → 61
+   * at the same candidate count), and at a smaller candidate quota the far
+   * heads case could fail to find *any* good match at all (best biasError
+   * ~1 → ~33) — the heuristic causes both waves to race along the direct
+   * line between the heads and defer the surrounding area, and once a
+   * large-enough quota forces the search into that deferred area, or the
+   * quota is too small for the direct-line region to contain a good match,
+   * the result is worse than plain radial BFS. Reverted; not reattempting
+   * without a materially different heuristic.
    *
    * @param molterIndex - Seat that just molted.
    * @returns Biased empty cell, or null if the field is full.
@@ -932,6 +948,7 @@ export class Game {
       return this.pickEmptyCell(true);
     }
 
+    const candidateTarget = Math.round(this.width * this.height * Game.YELLOW_CANDIDATE_FRACTION);
     const blocked = new Set<string>(this.walls);
     for (const player of this.players) {
       if (!player.alive) {
@@ -1016,7 +1033,7 @@ export class Game {
     const nextVirtual = (w: Wave): number =>
       w.head < w.queue.length ? w.offset + w.dist.get(key(w.queue[w.head]))! : Number.POSITIVE_INFINITY;
 
-    while (found.length < Game.YELLOW_CANDIDATE_TARGET) {
+    while (found.length < candidateTarget) {
       const vMolter = nextVirtual(molterWave);
       const vOpponent = nextVirtual(opponentWave);
       if (vMolter === Number.POSITIVE_INFINITY && vOpponent === Number.POSITIVE_INFINITY) {
@@ -1050,7 +1067,7 @@ export class Game {
 
     this.events.push({
       type: "yellow_candidates",
-      positions: found.map((c) => c.pos),
+      candidates: found.map((c) => ({ pos: c.pos, diff: c.distOpponent - c.distMolter })),
     });
 
     console.log("[yellow-spawn]", {
