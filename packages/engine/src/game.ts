@@ -3,7 +3,7 @@
  */
 
 import { createRng, randomInt } from "./rng.ts";
-import { dijkstraDistance, dijkstraDistancesFrom } from "./pathfinding.ts";
+import { dijkstraDistance } from "./pathfinding.ts";
 import { versusNetScore } from "./scoring.ts";
 import {
   MEDIUM_SIZE,
@@ -910,10 +910,26 @@ export class Game {
     });
   }
 
+  /** Stop expanding the dual-wave search once this many eligible dual-touched cells are found. */
+  private static readonly YELLOW_CANDIDATE_TARGET = 50;
+
   /**
-   * Picks an empty cell ~N Dijkstra ticks closer to the molting snake than the
-   * opponent (N random in 5–10 inclusive). Falls back to minimizing
-   * `| (dOpp − dMolter) − N |`, then {@link pickEmptyCell}.
+   * Picks an empty cell ~N Dijkstra ticks closer to the molting snake than
+   * the opponent (N random in 5–10 inclusive). Picks uniformly among the 5
+   * candidates whose `dOpponent − dMolter` comes closest to the bias.
+   * Falls back to {@link pickEmptyCell} if no cell qualifies.
+   *
+   * Runs two BFS waves simultaneously — one from each head — merged in
+   * order of "virtual distance", where the molter's wave is given a head
+   * start of `bias` steps. A cell first becomes usable once *both* waves
+   * have reached it (a "dual touch"); at that moment its real distances
+   * from both heads are known, so `dOpponent − dMolter` can be computed
+   * directly. Dual touches occur earliest near the true bias boundary, so
+   * they arrive in roughly increasing bias-error order — the search stops
+   * as soon as {@link YELLOW_CANDIDATE_TARGET} eligible ones are found
+   * (or both waves are fully exhausted), instead of flooding the whole
+   * board from both heads and then scanning every cell like the previous
+   * version did.
    *
    * @param molterIndex - Seat that just molted.
    * @returns Biased empty cell, or null if the field is full.
@@ -935,62 +951,125 @@ export class Game {
       }
     }
 
-    const distMolter = dijkstraDistancesFrom(
-      this.width,
-      this.height,
-      molter.body[0],
-      blocked,
-    );
-    const distOther = dijkstraDistancesFrom(
-      this.width,
-      this.height,
-      other.body[0],
-      blocked,
-    );
-
+    const molterHead = molter.body[0];
+    const opponentHead = other.body[0];
     const bias = randomInt(this.rng, 5, 10);
-    let bestBiasError = Number.POSITIVE_INFINITY;
-    let bestMolterDist = Number.POSITIVE_INFINITY;
-    const tied: Point[] = [];
 
-    for (let y = 0; y < this.height; y += 1) {
-      for (let x = 0; x < this.width; x += 1) {
-        const p = { x, y };
-        const k = key(p);
-        if (this.walls.has(k) || this.isSnakeOccupied(p)) {
+    interface FoundCandidate {
+      pos: Point;
+      distMolter: number;
+      distOpponent: number;
+      biasError: number;
+    }
+
+    interface Wave {
+      queue: Point[];
+      head: number;
+      dist: Map<string, number>;
+      offset: number;
+    }
+
+    const makeWave = (start: Point, offset: number): Wave => ({
+      queue: [start],
+      head: 0,
+      dist: new Map([[key(start), 0]]),
+      offset,
+    });
+
+    const isEligible = (p: Point, k: string): boolean =>
+      !this.bluePellets.has(k) &&
+      !this.greenPellets.has(k) &&
+      !this.isYellowOccupied(p) &&
+      !this.tooCloseToAnyHead(p);
+
+    const found: FoundCandidate[] = [];
+
+    // Expands the next unvisited neighbor of `w`'s frontmost queued cell,
+    // recording a candidate the instant it turns out `other` already
+    // reached that same cell (a dual touch).
+    const stepWave = (w: Wave, other: Wave, wIsMolter: boolean): void => {
+      const cur = w.queue[w.head];
+      w.head += 1;
+      const curDist = w.dist.get(key(cur))!;
+      for (const dir of DIRECTIONS) {
+        const delta = DELTA[dir];
+        const nx = cur.x + delta.x;
+        const ny = cur.y + delta.y;
+        if (nx < 0 || ny < 0 || nx >= this.width || ny >= this.height) {
           continue;
         }
-        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
+        const np = { x: nx, y: ny };
+        const nk = key(np);
+        if (blocked.has(nk) || w.dist.has(nk)) {
           continue;
         }
-        if (this.tooCloseToAnyHead(p)) {
+        const nDist = curDist + 1;
+        w.dist.set(nk, nDist);
+        w.queue.push(np);
+
+        const otherDist = other.dist.get(nk);
+        if (otherDist === undefined) {
           continue;
         }
-        const dM = distMolter.get(k);
-        const dO = distOther.get(k);
-        if (dM === undefined || dO === undefined || dM === 0 || dO === 0) {
+        const distMolter = wIsMolter ? nDist : otherDist;
+        const distOpponent = wIsMolter ? otherDist : nDist;
+        if (distMolter === 0 || distOpponent === 0 || !isEligible(np, nk)) {
           continue;
         }
-        // Prefer cells closer to the molter by ~bias ticks: dO − dM ≈ bias.
-        const biasError = Math.abs(dO - dM - bias);
-        if (
-          biasError < bestBiasError ||
-          (biasError === bestBiasError && dM < bestMolterDist)
-        ) {
-          bestBiasError = biasError;
-          bestMolterDist = dM;
-          tied.length = 0;
-          tied.push(p);
-        } else if (biasError === bestBiasError && dM === bestMolterDist) {
-          tied.push(p);
-        }
+        found.push({ pos: np, distMolter, distOpponent, biasError: Math.abs(distOpponent - distMolter - bias) });
+      }
+    };
+
+    const molterWave = makeWave(molterHead, bias);
+    const opponentWave = makeWave(opponentHead, 0);
+    const nextVirtual = (w: Wave): number =>
+      w.head < w.queue.length ? w.offset + w.dist.get(key(w.queue[w.head]))! : Number.POSITIVE_INFINITY;
+
+    while (found.length < Game.YELLOW_CANDIDATE_TARGET) {
+      const vMolter = nextVirtual(molterWave);
+      const vOpponent = nextVirtual(opponentWave);
+      if (vMolter === Number.POSITIVE_INFINITY && vOpponent === Number.POSITIVE_INFINITY) {
+        break;
+      }
+      if (vMolter <= vOpponent) {
+        stepWave(molterWave, opponentWave, true);
+      } else {
+        stepWave(opponentWave, molterWave, false);
       }
     }
 
-    if (tied.length === 0) {
+    const logHeads = { x: molterHead.x, y: molterHead.y };
+    const logOpponentHead = { x: opponentHead.x, y: opponentHead.y };
+
+    if (found.length === 0) {
+      console.log("[yellow-spawn] no candidate cell qualifies, falling back to pickEmptyCell", {
+        tick: this.tickCount,
+        molterIndex,
+        bias,
+        molterHead: logHeads,
+        opponentHead: logOpponentHead,
+      });
       return this.pickEmptyCell();
     }
-    return tied[randomInt(this.rng, 0, tied.length - 1)];
+
+    found.sort((a, b) => a.biasError - b.biasError || a.distMolter - b.distMolter);
+    const best5 = found.slice(0, Math.min(5, found.length));
+    const worst = found[found.length - 1];
+    const chosen = best5[randomInt(this.rng, 0, best5.length - 1)];
+
+    console.log("[yellow-spawn]", {
+      tick: this.tickCount,
+      molterIndex,
+      bias,
+      molterHead: logHeads,
+      opponentHead: logOpponentHead,
+      candidatesFound: found.length,
+      worst: { pos: worst.pos, distMolter: worst.distMolter, distOpponent: worst.distOpponent, biasError: worst.biasError },
+      best5: best5.map((c) => ({ pos: c.pos, distMolter: c.distMolter, distOpponent: c.distOpponent, biasError: c.biasError })),
+      selected: chosen.pos,
+    });
+
+    return chosen.pos;
   }
 
   /**
