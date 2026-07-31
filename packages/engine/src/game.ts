@@ -892,7 +892,7 @@ export class Game {
     const pos =
       this.playerCount === 2
         ? this.pickBiasedYellowCell(molterIndex)
-        : this.pickEmptyCell();
+        : this.pickEmptyCell(true);
     if (pos === null) {
       return;
     }
@@ -938,7 +938,7 @@ export class Game {
     const molter = this.players[molterIndex];
     const other = this.players[1 - molterIndex];
     if (!molter?.alive || !other?.alive) {
-      return this.pickEmptyCell();
+      return this.pickEmptyCell(true);
     }
 
     const blocked = new Set<string>(this.walls);
@@ -1049,7 +1049,7 @@ export class Game {
         molterHead: logHeads,
         opponentHead: logOpponentHead,
       });
-      return this.pickEmptyCell();
+      return this.pickEmptyCell(true);
     }
 
     found.sort((a, b) => a.biasError - b.biasError || a.distMolter - b.distMolter);
@@ -1094,7 +1094,7 @@ export class Game {
    * Places a blue pellet on a random empty cell, or no-ops if full.
    */
   private placeBlueOnEmpty(): void {
-    const pos = this.pickEmptyCell();
+    const pos = this.pickEmptyCell(false);
     if (pos !== null) {
       this.bluePellets.add(key(pos));
     }
@@ -1129,6 +1129,9 @@ export class Game {
   /**
    * Picks any occupied-or-empty cell for pellet spawn (empty or wall).
    *
+   * Blue/green pellets (the only callers of this method) may spawn right
+   * next to a head — unlike yellow, they're not worth camping.
+   *
    * @returns A random non-snake, non-pellet cell, or null if none.
    */
   private pickSpawnCell(): Point | null {
@@ -1143,9 +1146,6 @@ export class Game {
         if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
           continue;
         }
-        if (this.tooCloseToAnyHead(p)) {
-          continue;
-        }
         candidates.push(p);
       }
     }
@@ -1158,9 +1158,12 @@ export class Game {
   /**
    * Picks a random empty (non-wall, non-snake, non-pellet) cell.
    *
+   * @param respectHeadDistance - Exclude cells within 5 of any head. Yellow
+   *   callers pass `true` (camping a head for an easy grab isn't allowed);
+   *   {@link placeBlueOnEmpty} passes `false`, matching {@link pickSpawnCell}.
    * @returns An empty cell, or null if the field is full.
    */
-  private pickEmptyCell(): Point | null {
+  private pickEmptyCell(respectHeadDistance: boolean): Point | null {
     const candidates: Point[] = [];
     for (let y = 0; y < this.height; y += 1) {
       for (let x = 0; x < this.width; x += 1) {
@@ -1172,7 +1175,7 @@ export class Game {
         if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
           continue;
         }
-        if (this.tooCloseToAnyHead(p)) {
+        if (respectHeadDistance && this.tooCloseToAnyHead(p)) {
           continue;
         }
         candidates.push(p);
