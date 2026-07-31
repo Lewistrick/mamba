@@ -24,6 +24,8 @@ export interface RoomSnapshot {
     index: number;
     ready: boolean;
     rematchWanted?: boolean;
+    /** True while this seat's socket is down but still within the reconnect grace period. */
+    disconnected?: boolean;
   }[];
   hostUserId: string;
   /** Spectators currently queued to take the next vacated seat. */
@@ -56,6 +58,12 @@ export interface PublicRoomInfo {
 /** Server → client messages. */
 export type MpServerMessage =
   | { type: "auth_ok"; userId: string; displayName: string }
+  | {
+      /** Sent right after auth_ok when this connection is re-attaching to a seat it disconnected from mid-match, instead of a fresh join. */
+      type: "reconnected";
+      youIndex: number;
+      room: RoomSnapshot;
+    }
   | { type: "error"; message: string }
   | { type: "room"; room: RoomSnapshot }
   | { type: "public_rooms"; rooms: PublicRoomInfo[] }
@@ -115,7 +123,12 @@ type Handler = (msg: MpServerMessage) => void;
 export class MpClient {
   private ws: WebSocket | null = null;
   private readonly handlers = new Set<Handler>();
+  private readonly closeHandlers = new Set<() => void>();
   private authed = false;
+  /** Set by close() right before it tears down the socket, so the close event can tell an intentional close apart from a genuine drop. */
+  private intentionalClose = false;
+  /** Most recently requested direction, kept even while the socket is down so it can be re-sent on reconnect. */
+  private lastDir: Direction | null = null;
 
   /**
    * @param url - WebSocket URL (e.g. ws://localhost:8787/ws).
@@ -136,6 +149,22 @@ export class MpClient {
   }
 
   /**
+   * Subscribes to a genuine mid-session connection drop — the socket was
+   * authenticated and closed without close() being called first. Distinct
+   * from a connect()-time failure, which rejects the connect() promise
+   * instead of firing this.
+   *
+   * @param handler - Callback.
+   * @returns Unsubscribe.
+   */
+  onClose(handler: () => void): () => void {
+    this.closeHandlers.add(handler);
+    return () => {
+      this.closeHandlers.delete(handler);
+    };
+  }
+
+  /**
    * True when the socket is open and the server accepted auth.
    */
   get connected(): boolean {
@@ -149,6 +178,7 @@ export class MpClient {
    */
   async connect(accessToken: string): Promise<void> {
     this.close();
+    this.intentionalClose = false;
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
@@ -194,9 +224,16 @@ export class MpClient {
         }
       });
       ws.addEventListener("close", () => {
+        const wasAuthed = this.authed;
+        const wasIntentional = this.intentionalClose;
         this.ws = null;
         this.authed = false;
         fail("Multiplayer connection closed");
+        if (wasAuthed && !wasIntentional) {
+          for (const h of [...this.closeHandlers]) {
+            h();
+          }
+        }
       });
     });
   }
@@ -205,6 +242,7 @@ export class MpClient {
    * Closes the connection.
    */
   close(): void {
+    this.intentionalClose = true;
     this.authed = false;
     this.ws?.close();
     this.ws = null;
@@ -265,7 +303,19 @@ export class MpClient {
    * @param dir - Direction.
    */
   sendInput(dir: Direction): void {
+    this.lastDir = dir;
     this.send({ type: "input", dir });
+  }
+
+  /**
+   * Re-sends the most recently requested direction, if any — used right
+   * after reconnecting, since a direction requested while the socket was
+   * down never reached the server.
+   */
+  resendLastInput(): void {
+    if (this.lastDir) {
+      this.send({ type: "input", dir: this.lastDir });
+    }
   }
 
   /**

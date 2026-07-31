@@ -10,6 +10,7 @@ import {
   type Direction,
   type FieldSizeId,
   type GameState,
+  type Point,
 } from "@mamba/engine";
 import { SoundBoard } from "./audio.ts";
 import { fetchGlobalBoard, fetchGlobalStanding, submitGlobalScore } from "./globalLeaderboard.ts";
@@ -43,6 +44,7 @@ import {
   mpResultText,
   mpSpectateResultText,
 } from "./mpLobby.ts";
+import { advancePredicted, queueLocalDirection } from "./predictedSelf.ts";
 import {
   loadSettings,
   playModeKey,
@@ -68,6 +70,13 @@ import "./style.css";
 
 /** Fixed simulation rate (ticks per second). */
 const TICKS_PER_SECOND = 10;
+/**
+ * How long without a fresh multiplayer state message before the opponent's
+ * snake is dimmed instead of assumed to keep moving — about 2–2.5× the
+ * server's tick interval, so ordinary jitter doesn't flicker but a real
+ * stutter dims within roughly one missed tick.
+ */
+const MP_OPPONENT_STALE_MS = 220;
 const MAGIC_COOLDOWN_MS = 60_000;
 const MAGIC_COOLDOWN_KEY = "mamba.magicLinkAt";
 
@@ -334,9 +343,30 @@ let inMpRoom = false;
 let pArmed = false;
 /** True while the local snake is frozen (the easter egg above) — any next keypress unfreezes it. */
 let frozen = false;
+/**
+ * Easter egg: secret hotkey A, solo/vs-AI only. While on, the game
+ * auto-pauses the instant the yellow-pellet spawn search runs, labeling every
+ * candidate cell it considered with dOpponent − dMolter; unpausing reveals
+ * the board with the pellet already placed. A again turns admin mode off.
+ */
+let adminMode = false;
+/** Candidate cells to label, or null when there's nothing to show. */
+let adminCandidates: { pos: Point; diff: number }[] | null = null;
 let accumulator = 0;
 let paused = false;
 let lastTime = performance.now();
+/**
+ * Lightweight local prediction for the player's own snake in multiplayer —
+ * lets a keypress move it immediately instead of waiting on a full server
+ * round trip. Re-seeded from the authoritative state on every pregame/
+ * countdown/state message; pellets, collisions, and scoring are never
+ * predicted, only the body/direction/queued turns. See predictedSelf.ts.
+ */
+let predictedBody: Point[] = [];
+let predictedDirection: Direction = "Right";
+let predictedQueue: Direction[] = [];
+/** Wall-clock time of the last authoritative multiplayer match update, for opponent staleness dimming. */
+let lastMpStateAt = performance.now();
 let pendingScore: PendingScore | null = null;
 let scoreSaved = false;
 let signedInEmail: string | null = null;
@@ -345,6 +375,59 @@ let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
 let profileStatSort: StatSort = { key: "size", dir: "asc" };
 let profileChartXMode: ChartXMode = "date";
+
+/**
+ * Re-seeds local prediction from the authoritative multiplayer state (the
+ * "snap" half of predict-and-snap) and marks it as fresh for opponent
+ * staleness dimming.
+ *
+ * @param view - Authoritative state, already remapped so players[0] is you.
+ */
+/**
+ * Pulls the yellow-pellet candidates out of a tick's events, if the search
+ * ran this tick (admin-mode debug overlay only).
+ *
+ * @param events - This tick's events.
+ * @returns Candidate cells with dOpponent − dMolter, or null if no search ran.
+ */
+function extractYellowCandidates(events: GameState["events"]): { pos: Point; diff: number }[] | null {
+  for (const e of events) {
+    if (e.type === "yellow_candidates") {
+      return e.candidates.map((c) => ({ pos: { x: c.pos.x, y: c.pos.y }, diff: c.diff }));
+    }
+  }
+  return null;
+}
+
+function resyncPrediction(view: GameState): void {
+  const you = view.players[0];
+  predictedBody = you.body.map((p) => ({ x: p.x, y: p.y }));
+  predictedDirection = you.direction;
+  predictedQueue = [];
+  lastMpStateAt = performance.now();
+}
+
+/**
+ * Splices the locally-predicted body/direction into `players[0]` for
+ * rendering, when playing (not spectating) online. Everything else — the
+ * opponent, pellets, walls, score — always comes straight from the
+ * authoritative state; only the local player's own position is predicted.
+ *
+ * @param view - Authoritative state.
+ * @returns View to render.
+ */
+function withPredictedSelf(view: GameState): GameState {
+  if (!mpPlaying || spectating || view.players.length === 0) {
+    return view;
+  }
+  const you = view.players[0];
+  return {
+    ...view,
+    players: [{ ...you, body: predictedBody, direction: predictedDirection }, ...view.players.slice(1)],
+    snake: predictedBody,
+    direction: predictedDirection,
+  };
+}
 
 const mpLobby = new MpLobbyController(mpPageEl, {
   setStatus,
@@ -418,6 +501,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onPregame: (view) => {
     state = view;
+    resyncPrediction(view);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -431,6 +515,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onCountdown: (view) => {
     state = view;
+    resyncPrediction(view);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -446,6 +531,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     mpPlaying = true;
     inMpRoom = true;
     state = view;
+    resyncPrediction(view);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -1569,6 +1655,7 @@ function startGame(): void {
   persistFromMenu();
   sounds.resume();
   paused = false;
+  adminCandidates = null;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (settings.playMode === "ai") {
     game = Game.versusAi(settings.sizeId, seed);
@@ -1649,6 +1736,10 @@ function togglePause(): void {
   }
   paused = !paused;
   accumulator = 0;
+  if (!paused) {
+    // Reveal the board (pellet already placed) instead of the admin-mode candidate labels.
+    adminCandidates = null;
+  }
   setStatus(paused ? "Paused — P to resume" : "");
 }
 
@@ -1705,7 +1796,15 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === "Enter" || event.key === " ") {
+  if (event.key === "Enter") {
+    const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
+    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
+    if (readyOverlay && !readyOverlay.hidden && readyToggle && !readyToggle.disabled) {
+      event.preventDefault();
+      readyToggle.checked = !readyToggle.checked;
+      readyToggle.dispatchEvent(new Event("change"));
+      return;
+    }
     if (screen !== "playing") {
       event.preventDefault();
       startGame();
@@ -1713,13 +1812,10 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === "r" || event.key === "R") {
-    const readyOverlay = document.querySelector<HTMLElement>("#mp-ready-overlay");
-    const readyToggle = document.querySelector<HTMLInputElement>("#mp-ready-toggle");
-    if (readyOverlay && !readyOverlay.hidden && readyToggle && !readyToggle.disabled) {
+  if (event.key === " ") {
+    if (screen !== "playing") {
       event.preventDefault();
-      readyToggle.checked = !readyToggle.checked;
-      readyToggle.dispatchEvent(new Event("change"));
+      startGame();
     }
     return;
   }
@@ -1758,6 +1854,21 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === "a" || event.key === "A") {
+    if (event.repeat || mpPlaying || spectating) {
+      return;
+    }
+    event.preventDefault();
+    adminMode = !adminMode;
+    if (!adminMode && adminCandidates) {
+      // Nothing left to review — resume instead of leaving the game stuck paused.
+      adminCandidates = null;
+      paused = false;
+    }
+    setStatus(adminMode ? "Admin mode on" : "Admin mode off");
+    return;
+  }
+
   const dir = KEY_TO_DIR[event.key];
   if (dir) {
     pArmed = false;
@@ -1769,6 +1880,9 @@ function onKeyDown(event: KeyboardEvent): void {
     }
     if (mpPlaying) {
       mpLobby.sendInput(dir);
+      if (!spectating) {
+        predictedQueue = queueLocalDirection(predictedDirection, predictedQueue, dir);
+      }
       return;
     }
     if (game) {
@@ -1804,10 +1918,35 @@ function frame(now: number): void {
       state = game.tick();
       sounds.playEvents(state.events);
       accumulator -= step;
+      if (adminMode) {
+        const candidates = extractYellowCandidates(state.events);
+        if (candidates) {
+          adminCandidates = candidates;
+          paused = true;
+          accumulator = 0;
+          break;
+        }
+      }
       if (state.status === "gameover") {
         onGameOver(state, game);
         break;
       }
+    }
+  }
+
+  if (screen === "playing" && mpPlaying && !spectating && !paused && state) {
+    accumulator += dt;
+    const step = 1 / TICKS_PER_SECOND;
+    while (accumulator >= step) {
+      const predicted = advancePredicted(
+        { body: predictedBody, direction: predictedDirection, queue: predictedQueue },
+        state.width,
+        state.height,
+      );
+      predictedBody = predicted.body;
+      predictedDirection = predicted.direction;
+      predictedQueue = predicted.queue;
+      accumulator -= step;
     }
   }
 
@@ -1823,9 +1962,18 @@ function frame(now: number): void {
       : screen === "gameover" && overlayEl.hidden
         ? "gameover"
         : null;
-  renderer.draw(screen === "menu" ? drawState : state, overlay, stageBudget(), {
+  const renderState = state ? withPredictedSelf(state) : state;
+  const dimOpponent =
+    mpPlaying &&
+    !spectating &&
+    screen === "playing" &&
+    !paused &&
+    performance.now() - lastMpStateAt > MP_OPPONENT_STALE_MS;
+  renderer.draw(screen === "menu" ? drawState : renderState, overlay, stageBudget(), {
     opponentLabel: aiBrain ? "AI" : "Opp",
     fair: mpPlaying || spectating,
+    dimOpponent,
+    adminCandidates: adminCandidates ?? undefined,
   });
 
   // Scores leaderboard doesn't apply in multiplayer — swap in the standings

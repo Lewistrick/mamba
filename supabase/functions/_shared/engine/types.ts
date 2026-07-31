@@ -5,6 +5,22 @@
 /** Cardinal movement directions. */
 export type Direction = "Up" | "Down" | "Left" | "Right";
 
+/** The reverse of each direction (a snake can never turn directly into this). */
+export const OPPOSITE_DIRECTION: Record<Direction, Direction> = {
+  Up: "Down",
+  Down: "Up",
+  Left: "Right",
+  Right: "Left",
+};
+
+/** Grid delta for one step in each direction. */
+export const DIRECTION_DELTA: Record<Direction, Point> = {
+  Up: { x: 0, y: -1 },
+  Down: { x: 0, y: 1 },
+  Left: { x: -1, y: 0 },
+  Right: { x: 1, y: 0 },
+};
+
 /** Lifecycle status of a run. */
 export type GameStatus = "playing" | "gameover";
 
@@ -135,7 +151,14 @@ export type GameEvent =
   | { type: "eat_green"; player: number }
   | { type: "eat_yellow"; player: number }
   | { type: "molt"; player: number }
-  | { type: "die"; player: number };
+  | { type: "die"; player: number }
+  /**
+   * Every cell considered as a yellow-pellet spawn candidate this molt, with
+   * how much closer to the molter than the opponent it is (`dOpponent −
+   * dMolter`; negative means actually closer to the opponent) — for the
+   * client's "admin mode" debug overlay, otherwise unused.
+   */
+  | { type: "yellow_candidates"; candidates: { pos: Point; diff: number }[] };
 
 /** Ticks to wait after molt before assigning yellow TTL via Dijkstra. */
 export const YELLOW_GRACE_TICKS = 5;

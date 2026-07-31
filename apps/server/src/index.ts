@@ -26,6 +26,8 @@ loadDotEnv();
 const PORT = Number(process.env.PORT ?? 8787);
 const supabase = createSupabaseAdmin();
 const rooms = new RoomManager();
+/** How long a mid-match disconnect is tolerated before forfeiting. */
+const GRACE_PERIOD_MS = 15_000;
 
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
@@ -103,6 +105,48 @@ function broadcastState(room: Room, state: GameState): void {
     });
   }
   broadcastSpectateState(room);
+}
+
+/**
+ * Sends the current board to a single seat right after they reconnect.
+ * `reattachSeat` (see rooms.ts) only ever succeeds while `room.status ===
+ * "playing"` — any other status means the disconnected flag was already
+ * cleared (grace expiry, a natural game-over, etc.) — so this only needs to
+ * cover the live-match case.
+ *
+ * @param room - Room being caught up.
+ * @param index - Reconnecting seat.
+ * @param seat - Their fresh socket.
+ */
+function sendCatchUp(room: Room, index: number, seat: Seat): void {
+  if (!room.game || room.status !== "playing") {
+    return;
+  }
+  sendMsg(seat.send, {
+    type: "state",
+    tick: room.tick,
+    youIndex: index,
+    state: room.game.getState(),
+    names: rooms.names(room),
+  });
+}
+
+/**
+ * Fully removes a user from any room/spectating — forfeits if mid-match.
+ * The non-reconnectable path, shared by the explicit "leave" message, a
+ * disconnect outside active gameplay, and grace-period expiry.
+ *
+ * @param userId - Who's leaving.
+ */
+function forceLeave(userId: string): void {
+  const codes = rooms.leave(userId, handleGameOver);
+  rooms.removeSpectatorEverywhere(userId);
+  for (const code of codes) {
+    const left = rooms.get(code);
+    if (left) {
+      maybeEnterPregame(left);
+    }
+  }
 }
 
 /**
@@ -386,6 +430,25 @@ app.get(
               userId: user.userId,
               displayName: user.displayName,
             });
+
+            // Re-attach to a seat this user disconnected from mid-match,
+            // rather than leaving them stranded in the lobby.
+            if (sendFn) {
+              const seated = rooms.findSeat(user.userId);
+              if (seated && seated.room.disconnected[seated.index]) {
+                const seat: Seat = { user, send: sendFn };
+                const reattached = rooms.reattachSeat(user.userId, seat);
+                if (reattached) {
+                  reply({
+                    type: "reconnected",
+                    youIndex: reattached.index,
+                    room: rooms.snapshot(reattached.room, user.userId),
+                  });
+                  broadcastRoom(reattached.room);
+                  sendCatchUp(reattached.room, reattached.index, seat);
+                }
+              }
+            }
             return;
           }
 
@@ -460,14 +523,7 @@ app.get(
               break;
             }
             case "leave": {
-              const codes = rooms.leave(user.userId, handleGameOver);
-              rooms.removeSpectatorEverywhere(user.userId);
-              for (const code of codes) {
-                const left = rooms.get(code);
-                if (left) {
-                  maybeEnterPregame(left);
-                }
-              }
+              forceLeave(user.userId);
               break;
             }
             case "input": {
@@ -538,15 +594,33 @@ app.get(
         })();
       },
       onClose() {
-        if (user) {
-          const codes = rooms.leave(user.userId, handleGameOver);
-          rooms.removeSpectatorEverywhere(user.userId);
-          for (const code of codes) {
-            const left = rooms.get(code);
-            if (left) {
-              maybeEnterPregame(left);
-            }
-          }
+        if (!user) {
+          return;
+        }
+        const seated = rooms.findSeat(user.userId);
+        if (seated && seated.room.status === "playing") {
+          // Mid-match: give them a grace period to reconnect instead of an
+          // instant forfeit. The tick loop keeps running unchanged, so
+          // whatever happens during the gap is simply what a reconnecting
+          // client will see once caught up.
+          rooms.disconnectSeat(user.userId, GRACE_PERIOD_MS, forceLeave);
+          broadcastRoom(seated.room);
+          return;
+        }
+        // Not mid-match (or not seated at all) — nothing to protect.
+        // Readying/countdown gets an explicit heads-up for the remaining
+        // player, since today they'd otherwise just silently see "waiting
+        // for opponent" again with no explanation.
+        const cancelledOpponent =
+          seated && (seated.room.status === "readying" || seated.room.status === "countdown")
+            ? seated.room.seats[1 - seated.index]
+            : null;
+        forceLeave(user.userId);
+        if (cancelledOpponent) {
+          sendMsg(cancelledOpponent.send, {
+            type: "error",
+            message: "Connection failure — the match was cancelled.",
+          });
         }
       },
     };

@@ -638,7 +638,7 @@ describe("Game", () => {
     expect(game.getState().netScore).toBe(60);
   });
 
-  it("awards win bonus when the AI dies and the player survives", () => {
+  it("awards win bonus of 100 + 30 × level gap when the AI dies and the player survives", () => {
     const game = Game.versusAi("medium", 3);
     const g = game as unknown as {
       players: Array<{
@@ -680,6 +680,7 @@ describe("Game", () => {
     ];
     g.players[1].direction = "Left";
     g.players[1].score = 7;
+    g.players[1].level = 1;
     g.players[1].inputQueue = [];
     g.players[1].moltThreshold = 99;
 
@@ -687,10 +688,11 @@ describe("Game", () => {
     expect(state.status).toBe("gameover");
     expect(state.players[0].alive).toBe(true);
     expect(state.players[1].alive).toBe(false);
-    expect(state.winBonus).toBe(300);
-    expect(state.players[0].winBonus).toBe(300);
-    expect(state.score).toBe(310);
-    expect(state.netScore).toBe(303);
+    // 100 + 30 × (winner level 3 − loser level 1)
+    expect(state.winBonus).toBe(160);
+    expect(state.players[0].winBonus).toBe(160);
+    expect(state.score).toBe(170);
+    expect(state.netScore).toBe(163);
   });
 
   it("does not award win bonus on a head-on collision", () => {
@@ -903,7 +905,7 @@ describe("fair (real multiplayer)", () => {
     expect(pellets[0].pos).not.toEqual(pellets[1].pos);
   });
 
-  it("never spawns a pellet within Manhattan distance 5 of a player's head", () => {
+  it("allows blue/green pellets within Manhattan distance 5 of a player's head", () => {
     const game = Game.versusAi("small", 1);
     const g = game as unknown as {
       players: Array<{ body: { x: number; y: number }[] }>;
@@ -912,14 +914,73 @@ describe("fair (real multiplayer)", () => {
     };
     const head = g.players[0].body[0];
 
+    let sawClose = false;
     for (let i = 0; i < 100; i += 1) {
       g.bluePellets.clear();
       g.spawnPellet();
       for (const k of g.bluePellets) {
         const [x, y] = k.split(",").map(Number);
         const distance = Math.abs(x - head.x) + Math.abs(y - head.y);
-        expect(distance).toBeGreaterThan(5);
+        if (distance <= 5) {
+          sawClose = true;
+        }
       }
+    }
+    expect(sawClose).toBe(true);
+  });
+
+  it("still keeps yellow pellets more than Manhattan distance 5 from either head", () => {
+    const game = Game.versusAi("small", 99);
+    const g = game as unknown as {
+      players: Array<{
+        body: { x: number; y: number }[];
+        direction: string;
+        level: number;
+        pelletsEatenThisLife: number;
+        moltThreshold: number;
+        inputQueue: unknown[];
+        alive: boolean;
+      }>;
+      bluePellets: Set<string>;
+      greenPellets: Set<string>;
+      walls: Set<string>;
+      yellowPellets: unknown[];
+      spawnYellow: (level: number, molterIndex: number) => void;
+    };
+    g.bluePellets = new Set();
+    g.greenPellets = new Set();
+    g.walls = new Set();
+    g.yellowPellets = [];
+    g.players[0].body = [
+      { x: 2, y: 5 },
+      { x: 1, y: 5 },
+      { x: 0, y: 5 },
+      { x: 0, y: 4 },
+      { x: 0, y: 3 },
+    ];
+    g.players[0].direction = "Right";
+    g.players[0].inputQueue = [];
+    g.players[0].moltThreshold = 99;
+    g.players[0].alive = true;
+    g.players[1].body = [
+      { x: 16, y: 5 },
+      { x: 17, y: 5 },
+      { x: 18, y: 5 },
+      { x: 19, y: 5 },
+      { x: 19, y: 4 },
+    ];
+    g.players[1].direction = "Left";
+    g.players[1].inputQueue = [];
+    g.players[1].moltThreshold = 99;
+    g.players[1].alive = true;
+
+    g.spawnYellow(2, 0);
+    const yellow = game.getState().yellowPellets[0] as { pos: { x: number; y: number } } | undefined;
+    expect(yellow).toBeDefined();
+    for (const player of g.players) {
+      const head = player.body[0];
+      const distance = Math.abs(yellow!.pos.x - head.x) + Math.abs(yellow!.pos.y - head.y);
+      expect(distance).toBeGreaterThan(5);
     }
   });
 

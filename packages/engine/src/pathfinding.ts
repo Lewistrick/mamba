@@ -145,8 +145,13 @@ export function dijkstraDistancesFrom(
   const dist = new Map<string, number>([[startKey, 0]]);
   const queue: Point[] = [start];
 
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
+  // Index-pointer queue: Array.prototype.shift() re-indexes the whole
+  // array on every call (O(n) per pop), turning this BFS into O(n²).
+  // Advancing a read cursor instead keeps each pop O(1) amortized.
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head];
+    head += 1;
     const curKey = `${cur.x},${cur.y}`;
     const curDist = dist.get(curKey)!;
     for (const delta of NEIGHBORS) {

@@ -13,8 +13,10 @@ export {
 export { createRng, randomInt } from "./rng.ts";
 export {
   AI_DIFFICULTIES,
+  DIRECTION_DELTA,
   FIELD_SIZES,
   MEDIUM_SIZE,
+  OPPOSITE_DIRECTION,
   START_LENGTH,
   TICKS_PER_SECOND,
   YELLOW_FALLBACK_MIN_SECONDS,
