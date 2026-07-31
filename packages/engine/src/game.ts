@@ -1126,6 +1126,35 @@ export class Game {
     }
   }
 
+  /** Random-coordinate draws to try before falling back to an exhaustive scan. */
+  private static readonly REJECTION_SAMPLE_ATTEMPTS = 100;
+
+  /**
+   * Rejection-samples a random cell satisfying `isAvailable`: draw random
+   * coordinates and accept the first hit, which is cheap as long as most of
+   * the board qualifies. Falls back to `exhaustive` (a full-board scan) once
+   * {@link REJECTION_SAMPLE_ATTEMPTS} draws miss, so a nearly-full board
+   * still gets a correct answer (or a correct `null`) instead of an
+   * unbounded or falsely-failed search.
+   *
+   * @param isAvailable - Predicate for a candidate cell and its key.
+   * @param exhaustive - Full-scan fallback, called only on repeated misses.
+   * @returns A qualifying cell, or null if none exists.
+   */
+  private pickRandomAvailableCell(
+    isAvailable: (p: Point, k: string) => boolean,
+    exhaustive: () => Point | null,
+  ): Point | null {
+    for (let i = 0; i < Game.REJECTION_SAMPLE_ATTEMPTS; i += 1) {
+      const p = { x: randomInt(this.rng, 0, this.width - 1), y: randomInt(this.rng, 0, this.height - 1) };
+      const k = key(p);
+      if (isAvailable(p, k)) {
+        return p;
+      }
+    }
+    return exhaustive();
+  }
+
   /**
    * Picks any occupied-or-empty cell for pellet spawn (empty or wall).
    *
@@ -1135,6 +1164,17 @@ export class Game {
    * @returns A random non-snake, non-pellet cell, or null if none.
    */
   private pickSpawnCell(): Point | null {
+    return this.pickRandomAvailableCell(
+      (p, k) =>
+        !this.isSnakeOccupied(p) &&
+        !this.bluePellets.has(k) &&
+        !this.greenPellets.has(k) &&
+        !this.isYellowOccupied(p),
+      () => this.pickSpawnCellExhaustive(),
+    );
+  }
+
+  private pickSpawnCellExhaustive(): Point | null {
     const candidates: Point[] = [];
     for (let y = 0; y < this.height; y += 1) {
       for (let x = 0; x < this.width; x += 1) {
@@ -1164,6 +1204,21 @@ export class Game {
    * @returns An empty cell, or null if the field is full.
    */
   private pickEmptyCell(respectHeadDistance: boolean): Point | null {
+    return this.pickRandomAvailableCell(
+      (p, k) => {
+        if (this.walls.has(k) || this.isSnakeOccupied(p)) {
+          return false;
+        }
+        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
+          return false;
+        }
+        return !respectHeadDistance || !this.tooCloseToAnyHead(p);
+      },
+      () => this.pickEmptyCellExhaustive(respectHeadDistance),
+    );
+  }
+
+  private pickEmptyCellExhaustive(respectHeadDistance: boolean): Point | null {
     const candidates: Point[] = [];
     for (let y = 0; y < this.height; y += 1) {
       for (let x = 0; x < this.width; x += 1) {
