@@ -1074,6 +1074,14 @@ export class Game {
 
   /**
    * Spawns a replacement pellet after eating.
+   *
+   * The target cell may already hold something, since {@link pickSpawnCell}
+   * only rejects snake and yellow cells:
+   * - Wall → convert to green (existing behavior, 10% chained line).
+   * - Existing green → unconditional chained line ({@link chainFillGreen});
+   *   landing on green is already rare, so this isn't gated by another roll.
+   * - Existing blue → removed, with no replacement placed this time.
+   * - Otherwise empty ground → place a new blue pellet.
    */
   private spawnPellet(): void {
     const cell = this.pickSpawnCell();
@@ -1084,6 +1092,14 @@ export class Game {
     const k = key(cell);
     if (this.walls.has(k)) {
       this.convertWallToGreen(cell);
+      return;
+    }
+    if (this.greenPellets.has(k)) {
+      this.chainFillGreen(cell);
+      return;
+    }
+    if (this.bluePellets.has(k)) {
+      this.bluePellets.delete(k);
       return;
     }
 
@@ -1113,7 +1129,18 @@ export class Game {
     if (this.rng() >= 0.1) {
       return;
     }
+    this.chainFillGreen(origin);
+  }
 
+  /**
+   * Picks a random direction and converts the run of consecutive wall cells
+   * adjacent to `origin` in that direction into green pellets, stopping at
+   * the first non-wall cell. Unconditional — callers decide whether/when to
+   * roll for it.
+   *
+   * @param origin - Cell (already green, or about to be) to chain from.
+   */
+  private chainFillGreen(origin: Point): void {
     const dir = DIRECTIONS[randomInt(this.rng, 0, DIRECTIONS.length - 1)];
     const delta = DELTA[dir];
     let cursor: Point = { x: origin.x + delta.x, y: origin.y + delta.y };
@@ -1156,20 +1183,17 @@ export class Game {
   }
 
   /**
-   * Picks any occupied-or-empty cell for pellet spawn (empty or wall).
+   * Picks any cell for a pellet spawn to land on — wall, empty ground, or an
+   * existing blue/green pellet all qualify; {@link spawnPellet} decides what
+   * happens based on what's actually there. The only rejections are a
+   * snake body and an existing yellow pellet. Blue/green may also land
+   * right next to a head — unlike yellow, they're not worth camping.
    *
-   * Blue/green pellets (the only callers of this method) may spawn right
-   * next to a head — unlike yellow, they're not worth camping.
-   *
-   * @returns A random non-snake, non-pellet cell, or null if none.
+   * @returns A random non-snake, non-yellow cell, or null if none.
    */
   private pickSpawnCell(): Point | null {
     return this.pickRandomAvailableCell(
-      (p, k) =>
-        !this.isSnakeOccupied(p) &&
-        !this.bluePellets.has(k) &&
-        !this.greenPellets.has(k) &&
-        !this.isYellowOccupied(p),
+      (p) => !this.isSnakeOccupied(p) && !this.isYellowOccupied(p),
       () => this.pickSpawnCellExhaustive(),
     );
   }
@@ -1179,11 +1203,7 @@ export class Game {
     for (let y = 0; y < this.height; y += 1) {
       for (let x = 0; x < this.width; x += 1) {
         const p = { x, y };
-        const k = key(p);
-        if (this.isSnakeOccupied(p)) {
-          continue;
-        }
-        if (this.bluePellets.has(k) || this.greenPellets.has(k) || this.isYellowOccupied(p)) {
+        if (this.isSnakeOccupied(p) || this.isYellowOccupied(p)) {
           continue;
         }
         candidates.push(p);
