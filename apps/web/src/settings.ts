@@ -30,7 +30,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   sizeId: "medium",
   soundEnabled: true,
-  playerName: "AAA",
+  playerName: "",
   leaderboardScope: "local",
   playMode: "solo",
   aiDifficulty: "medium",

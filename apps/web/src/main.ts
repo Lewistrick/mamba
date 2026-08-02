@@ -13,9 +13,16 @@ import {
   type Point,
 } from "@mamba/engine";
 import { SoundBoard } from "./audio.ts";
-import { fetchGlobalBoard, fetchGlobalStanding, submitGlobalScore } from "./globalLeaderboard.ts";
+import {
+  fetchGlobalBoard,
+  fetchGlobalBoardWindow,
+  fetchGlobalStanding,
+  fetchGlobalStandingExact,
+  submitGlobalScore,
+} from "./globalLeaderboard.ts";
 import {
   getBoard,
+  neighborRanks,
   sanitizeName,
   submitScore,
   type GameMode,
@@ -100,6 +107,8 @@ interface PendingScore {
 
 const canvasEl = document.querySelector<HTMLCanvasElement>("#game");
 const stageEl = document.querySelector<HTMLElement>("#stage");
+const soloCountdownOverlay = document.querySelector<HTMLElement>("#solo-countdown-overlay");
+const soloCountdown = document.querySelector<HTMLElement>("#solo-countdown");
 const playBtnEl = document.querySelector<HTMLButtonElement>("#btn-play");
 const multiplayerBtn = document.querySelector<HTMLButtonElement>("#btn-multiplayer");
 const statusNode = document.querySelector<HTMLElement>("#status");
@@ -182,6 +191,8 @@ const profileChartCanvas = document.querySelector<HTMLCanvasElement>("#profile-c
 if (
   !canvasEl ||
   !stageEl ||
+  !soloCountdownOverlay ||
+  !soloCountdown ||
   !playBtnEl ||
   !multiplayerBtn ||
   !statusNode ||
@@ -259,6 +270,8 @@ if (
 
 const canvas = canvasEl;
 const stage = stageEl;
+const soloCountdownOverlayEl = soloCountdownOverlay;
+const soloCountdownEl = soloCountdown;
 const playBtn = playBtnEl;
 const multiplayerBtnEl = multiplayerBtn!;
 const statusEl = statusNode;
@@ -365,6 +378,9 @@ let adminMode = false;
 let adminCandidates: { pos: Point; diff: number }[] | null = null;
 let accumulator = 0;
 let paused = false;
+/** True during the local 3-2-1-GO countdown before a Solo/vs-AI match ticks. */
+let countingDown = false;
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let lastTime = performance.now();
 /**
  * Lightweight local prediction for the player's own snake in multiplayer —
@@ -381,6 +397,24 @@ let lastMpStateAt = performance.now();
 let signedInEmail: string | null = null;
 /** True while the guest name gate is shown voluntarily (via "Change name"), not because it's required. */
 let guestGateOpen = false;
+/**
+ * The most recently finished Solo/vs-AI run's saved score, used to highlight
+ * it (green) in the Scores panel — cleared when a new run starts. Matched
+ * against the currently selected board only when sizeId/mode agree; period
+ * and scope are re-evaluated live since the run qualifies for all of them.
+ * `localCreatedAt` identifies the row in the local board; `globalCreatedAt`
+ * (server-assigned, set once the global submit resolves) identifies it in
+ * the global board — two different clocks, two different keys, and ties on
+ * score make an approximate match unsafe (could highlight someone else's row).
+ */
+let lastPlayedEntry: {
+  sizeId: FieldSizeId;
+  mode: GameMode;
+  name: string;
+  score: number;
+  localCreatedAt: number;
+  globalCreatedAt: number | null;
+} | null = null;
 let profile: Profile | null = null;
 let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
@@ -947,29 +981,86 @@ function syncPlayButton(): void {
 }
 
 /**
- * Renders a score list into the leaderboard DOM.
+ * Builds one leaderboard row, optionally highlighted as the local player's
+ * own just-played score.
  *
- * @param board - Rows to show.
+ * @param rank - 1-based rank to display.
+ * @param row - Score data.
+ * @param isYou - Highlights the row green (this game's own score).
  */
-function renderBoard(board: ScoreEntry[]): void {
+function buildScoreRow(rank: number, row: ScoreEntry, isYou: boolean): HTMLLIElement {
+  const li = document.createElement("li");
+  if (isYou) {
+    li.className = "you";
+  }
+  li.innerHTML = `<span class="rank">${rank}.</span><span class="name"></span><span class="score"></span>`;
+  li.querySelector(".name")!.textContent = row.verified ? `✓ ${row.name}` : row.name;
+  li.querySelector(".score")!.textContent = String(row.score);
+  return li;
+}
+
+/**
+ * Renders a score list into the leaderboard DOM. When `highlightRank` falls
+ * outside `board` (the just-played score didn't place in the displayed top
+ * N), `extraRows` are appended after a "···" separator so the player can
+ * still see where they landed.
+ *
+ * @param board - Top-N rows to show.
+ * @param highlightRank - 1-based rank of the local player's just-played
+ * score, or null if there isn't one for the current filters.
+ * @param extraRows - Rank-neighbor rows to append (already excludes ranks
+ * covered by `board`); ignored when `highlightRank` is within `board`.
+ */
+function renderBoard(
+  board: ScoreEntry[],
+  highlightRank: number | null = null,
+  extraRows: { rank: number; entry: ScoreEntry }[] = [],
+): void {
   listEl.replaceChildren();
-  if (board.length === 0) {
+  if (board.length === 0 && extraRows.length === 0) {
     emptyEl.hidden = false;
     emptyEl.textContent = "No scores yet";
     return;
   }
   emptyEl.hidden = true;
   board.forEach((row, index) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="rank">${index + 1}.</span><span class="name"></span><span class="score"></span>`;
-    li.querySelector(".name")!.textContent = row.verified ? `✓ ${row.name}` : row.name;
-    li.querySelector(".score")!.textContent = String(row.score);
-    listEl.append(li);
+    const rank = index + 1;
+    listEl.append(buildScoreRow(rank, row, rank === highlightRank));
   });
+  if (extraRows.length > 0) {
+    const separator = document.createElement("li");
+    separator.className = "lb-separator";
+    separator.textContent = "···";
+    listEl.append(separator);
+    for (const { rank, entry } of extraRows) {
+      listEl.append(buildScoreRow(rank, entry, rank === highlightRank));
+    }
+  }
 }
 
 /**
- * Refreshes the visible leaderboard for the menu size + mode.
+ * Picks out the extra rank rows from a fetched/sliced window, keyed by
+ * their 1-based rank (`windowStartRank` is the rank of `rows[0]`).
+ */
+function pickRanksFromWindow(
+  ranks: number[],
+  rows: ScoreEntry[],
+  windowStartRank: number,
+): { rank: number; entry: ScoreEntry }[] {
+  const picked: { rank: number; entry: ScoreEntry }[] = [];
+  for (const rank of ranks) {
+    const entry = rows[rank - windowStartRank];
+    if (entry) {
+      picked.push({ rank, entry });
+    }
+  }
+  return picked;
+}
+
+/**
+ * Refreshes the visible leaderboard for the menu size + mode. If the last
+ * Solo/vs-AI run matches the current size/mode, highlights it (green) even
+ * when it falls outside the displayed top N, alongside its rank neighbors.
  */
 async function refreshLeaderboard(): Promise<void> {
   const sizeId = selectedSizeId();
@@ -978,8 +1069,31 @@ async function refreshLeaderboard(): Promise<void> {
   const scope = selectedScope();
   lbHideGuestsFieldEl.hidden = scope !== "global";
 
+  const highlight =
+    lastPlayedEntry && lastPlayedEntry.sizeId === sizeId && lastPlayedEntry.mode === mode
+      ? lastPlayedEntry
+      : null;
+
   if (scope === "local") {
-    renderBoard(getBoard(sizeId, mode, period));
+    const board = getBoard(sizeId, mode, period);
+    if (!highlight) {
+      renderBoard(board);
+      return;
+    }
+    const full = getBoard(sizeId, mode, period, Date.now(), undefined, Number.POSITIVE_INFINITY);
+    const rankIndex = full.findIndex(
+      (row) =>
+        row.createdAt === highlight.localCreatedAt &&
+        row.score === highlight.score &&
+        row.name === highlight.name,
+    );
+    if (rankIndex < 0) {
+      renderBoard(board);
+      return;
+    }
+    const rank = rankIndex + 1;
+    const ranks = neighborRanks(rank, board.length, full.length);
+    renderBoard(board, rank, pickRanksFromWindow(ranks, full, 1));
     return;
   }
 
@@ -994,7 +1108,38 @@ async function refreshLeaderboard(): Promise<void> {
   emptyEl.textContent = "Loading…";
   listEl.replaceChildren();
   const board = await fetchGlobalBoard(sizeId, mode, period, settings.hideGuestScores);
-  renderBoard(board);
+  if (!highlight || highlight.globalCreatedAt === null) {
+    renderBoard(board);
+    return;
+  }
+  // Exact (tie-broken) rank, not fetchGlobalStanding's tie-blind one — a
+  // score tied with someone else's must still single out our own row.
+  const standing = await fetchGlobalStandingExact(
+    sizeId,
+    mode,
+    highlight.score,
+    highlight.globalCreatedAt,
+    period,
+    settings.hideGuestScores,
+  );
+  if (!standing) {
+    renderBoard(board);
+    return;
+  }
+  const ranks = neighborRanks(standing.rank, board.length, standing.total);
+  if (ranks.length === 0) {
+    renderBoard(board, standing.rank);
+    return;
+  }
+  const rankWindow = await fetchGlobalBoardWindow(
+    sizeId,
+    mode,
+    period,
+    ranks[0],
+    ranks[ranks.length - 1],
+    settings.hideGuestScores,
+  );
+  renderBoard(board, standing.rank, pickRanksFromWindow(ranks, rankWindow, ranks[0]));
 }
 
 /**
@@ -1485,6 +1630,14 @@ function buildStandingsTable(
   }
 }
 
+/**
+ * Populates the level/score/time/win/net game-over table, shared by real
+ * multiplayer and vs-AI.
+ *
+ * @param fair - Real multiplayer: opponent pellets are never deducted from
+ * either column's net score. vs-AI (fair=false): each column's net score
+ * deducts the other player's pellets, matching vs-AI's existing scoring.
+ */
 function renderMpGameOver(
   view: GameState,
   names: [string, string],
@@ -1492,6 +1645,7 @@ function renderMpGameOver(
   winnerIndex: number | null,
   elo: { before: number; after: number; delta: number } | null,
   resultText: string,
+  fair = true,
 ): void {
   goScoreEl.hidden = true;
   goMpSummaryEl.hidden = false;
@@ -1499,7 +1653,7 @@ function renderMpGameOver(
 
   const youWins = winnerIndex !== null && winnerIndex === youIndex;
   const oppWins = winnerIndex !== null && winnerIndex !== youIndex;
-  const { youName, oppName, rows } = mpScoreTable(view, names, youIndex);
+  const { youName, oppName, rows } = mpScoreTable(view, names, youIndex, fair);
   buildScoreTable(goMpTableEl, youName, oppName, rows, youWins, oppWins);
 
   const eloLine = mpEloText(elo);
@@ -1525,16 +1679,25 @@ async function autoSaveScore(
   name: string,
   guestId?: string,
 ): Promise<void> {
+  const localCreatedAt = Date.now();
   submitScore({
     name,
     score: pending.score,
     level: pending.level,
     sizeId: pending.sizeId,
     mode: pending.mode,
-    createdAt: Date.now(),
+    createdAt: localCreatedAt,
   });
+  lastPlayedEntry = {
+    sizeId: pending.sizeId,
+    mode: pending.mode,
+    name,
+    score: pending.score,
+    localCreatedAt,
+    globalCreatedAt: null,
+  };
 
-  const { error } = await submitGlobalScore({
+  const { error, createdAt: globalCreatedAt } = await submitGlobalScore({
     seed: pending.seed,
     sizeId: pending.sizeId,
     mode: pending.mode,
@@ -1551,6 +1714,9 @@ async function autoSaveScore(
     setStatus(`Global save failed: ${error}`);
     await refreshLeaderboard();
     return;
+  }
+  if (globalCreatedAt !== undefined && lastPlayedEntry) {
+    lastPlayedEntry = { ...lastPlayedEntry, globalCreatedAt };
   }
 
   const [daily, allTime] = await Promise.all([
@@ -1650,6 +1816,41 @@ function requestRematch(): boolean {
 }
 
 /**
+ * Shows a 3-2-1-GO countdown (matching multiplayer's look/audio) before the
+ * tick loop starts, so a Solo/vs-AI match doesn't just snap into motion.
+ */
+function runLocalCountdown(): void {
+  clearLocalCountdown();
+  countingDown = true;
+  sounds.playMatchCountdown();
+  soloCountdownOverlayEl.hidden = false;
+  const steps = ["3", "2", "1", "GO"];
+  let i = 0;
+  soloCountdownEl.textContent = steps[0];
+  countdownTimer = setInterval(() => {
+    i += 1;
+    if (i >= steps.length) {
+      clearLocalCountdown();
+      return;
+    }
+    soloCountdownEl.textContent = steps[i];
+  }, 1000);
+}
+
+/**
+ * Cancels/hides the local pre-game countdown, letting the tick loop run.
+ */
+function clearLocalCountdown(): void {
+  if (countdownTimer !== null) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  countingDown = false;
+  soloCountdownOverlayEl.hidden = true;
+  soloCountdownEl.textContent = "";
+}
+
+/**
  * Starts a new run with the currently selected size.
  */
 function startGame(): void {
@@ -1680,6 +1881,7 @@ function startGame(): void {
   sounds.resume();
   paused = false;
   adminCandidates = null;
+  lastPlayedEntry = null;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (settings.playMode === "ai") {
     game = Game.versusAi(settings.sizeId, seed);
@@ -1694,6 +1896,7 @@ function startGame(): void {
   playBtn.textContent = "Restart";
   setStatus(settings.playMode === "ai" ? `vs AI (${settings.aiDifficulty})` : "");
   void refreshLeaderboard();
+  runLocalCountdown();
 }
 
 /**
@@ -1731,17 +1934,42 @@ function onGameOver(final: GameState, run: Game): void {
     mode,
   };
 
-  const summary = formatGameOverScore(final);
-  const shortStatus =
-    final.players.length > 1 ? `Net ${score}` : `Score ${score}`;
+  const isVersusAi = final.players.length > 1;
+  const shortStatus = isVersusAi ? `Net ${score}` : `Score ${score}`;
+  const displayName = signedInEmail
+    ? sanitizeName(profile?.displayName ?? "AAA")
+    : sanitizeName(settings.playerName);
+
+  const renderSummary = (): void => {
+    if (!isVersusAi) {
+      goScoreEl.textContent = formatGameOverScore(final);
+      return;
+    }
+    const winnerIndex =
+      final.players[0].alive === final.players[1].alive
+        ? null
+        : final.players[0].alive
+          ? 0
+          : 1;
+    const names: [string, string] = [displayName, "AI"];
+    renderMpGameOver(
+      final,
+      names,
+      0,
+      winnerIndex,
+      null,
+      mpResultText(names, 0, winnerIndex),
+      false,
+    );
+  };
 
   if (signedInEmail && profile?.usernameSet) {
     showGameOverOverlay(pending);
-    goScoreEl.textContent = summary;
+    renderSummary();
     void autoSaveAccountScore(pending);
   } else if (!signedInEmail) {
     showGameOverOverlay(pending);
-    goScoreEl.textContent = summary;
+    renderSummary();
     void autoSaveGuestScore(pending);
   } else {
     hideGameOverOverlay();
@@ -1928,7 +2156,7 @@ function frame(now: number): void {
     return;
   }
 
-  if (screen === "playing" && game && !paused && !mpPlaying) {
+  if (screen === "playing" && game && !paused && !mpPlaying && !countingDown) {
     accumulator += dt;
     const step = 1 / TICKS_PER_SECOND;
     while (accumulator >= step) {
@@ -1997,6 +2225,7 @@ function frame(now: number): void {
     fair: mpPlaying || spectating,
     dimOpponent,
     adminCandidates: adminCandidates ?? undefined,
+    titleScreen: screen === "menu",
   });
 
   // Scores leaderboard doesn't apply in multiplayer — swap in the standings
@@ -2031,12 +2260,16 @@ mpReadyLeaveEl.addEventListener("click", leaveMultiplayerRoom);
 guestGateFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   void (async () => {
-    const name = sanitizeName(guestGateNameEl.value);
-    guestGateNameEl.value = name;
-    if (!name) {
+    // sanitizeName() falls back to "AAA" for an empty input (useful for
+    // display fallbacks elsewhere) — check the raw trimmed value first so a
+    // blank submit is rejected instead of silently becoming "AAA".
+    const raw = guestGateNameEl.value.replace(/\s+/g, " ").trim();
+    if (!raw) {
       setProfileMsg(guestGateMsgEl, "Choose a name before playing", "error");
       return;
     }
+    const name = sanitizeName(raw);
+    guestGateNameEl.value = name;
     const submitBtn = guestGateFormEl.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (submitBtn) {
       submitBtn.disabled = true;

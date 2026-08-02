@@ -651,6 +651,18 @@ p.go-too-low {
   color: var(--accent-yellow);
 }
 
+.lb-list li.you .rank,
+.lb-list li.you .name,
+.lb-list li.you .score {
+  color: var(--accent-green);
+}
+
+.lb-list li.lb-separator {
+  display: block;
+  text-align: center;
+  color: var(--muted);
+}
+
 .lb-empty {
   margin: 0;
   font-size: 0.75rem;

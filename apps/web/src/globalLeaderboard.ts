@@ -64,6 +64,70 @@ export async function fetchGlobalBoard(
   }));
 }
 
+/**
+ * Loads a contiguous rank window of global scores (1-based, inclusive) —
+ * e.g. the rows just above/below a score that fell outside the displayed
+ * top N. Ranks aren't carried per-row: since the query uses the same
+ * ordering as {@link fetchGlobalStanding}, the caller derives each row's
+ * rank from its position (`max(1, fromRank) + index`).
+ *
+ * @param sizeId - Board size.
+ * @param mode - Game mode.
+ * @param period - Time window.
+ * @param fromRank - First rank to include (1-based, inclusive; clamped to 1).
+ * @param toRank - Last rank to include (1-based, inclusive).
+ * @param verifiedOnly - When true, excludes guest (unverified) rows.
+ * @returns Rows in rank order starting at `max(1, fromRank)`.
+ */
+export async function fetchGlobalBoardWindow(
+  sizeId: FieldSizeId,
+  mode: GameMode,
+  period: LeaderboardPeriod,
+  fromRank: number,
+  toRank: number,
+  verifiedOnly = false,
+): Promise<ScoreEntry[]> {
+  if (!supabase) {
+    return [];
+  }
+  const from = Math.max(0, fromRank - 1);
+  const to = Math.max(from, toRank - 1);
+
+  const startMs = periodStart(period);
+  let query = supabase
+    .from("scores")
+    .select("display_name, score, level, size_id, mode, created_at, user_id")
+    .eq("size_id", sizeId)
+    .eq("mode", mode)
+    .eq("verified", true)
+    .order("score", { ascending: false })
+    .order("created_at", { ascending: true })
+    .range(from, to);
+
+  if (period !== "all") {
+    query = query.gte("created_at", new Date(startMs).toISOString());
+  }
+  if (verifiedOnly) {
+    query = query.not("user_id", "is", null);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) {
+    console.error("fetchGlobalBoardWindow", error);
+    return [];
+  }
+
+  return data.map((row) => ({
+    name: row.display_name as string,
+    score: row.score as number,
+    level: row.level as number,
+    sizeId: row.size_id as FieldSizeId,
+    mode: row.mode as GameMode,
+    createdAt: Date.parse(row.created_at as string),
+    verified: row.user_id != null,
+  }));
+}
+
 /** Global standing for a submitted score in a time window. */
 export interface GlobalStanding {
   /** 1-based rank (higher score = better). */
@@ -73,12 +137,41 @@ export interface GlobalStanding {
 }
 
 /**
- * Computes global rank for a score in a period (daily or all-time).
+ * Shared count-query base for standing lookups: verified rows matching
+ * size/mode/period (+ optional verified-only filter), row count only.
+ */
+function standingBaseQuery(
+  sizeId: FieldSizeId,
+  mode: GameMode,
+  period: LeaderboardPeriod,
+  verifiedOnly: boolean,
+) {
+  const startMs = periodStart(period);
+  let query = supabase!
+    .from("scores")
+    .select("id", { count: "exact", head: true })
+    .eq("size_id", sizeId)
+    .eq("mode", mode)
+    .eq("verified", true);
+  if (period !== "all") {
+    query = query.gte("created_at", new Date(startMs).toISOString());
+  }
+  if (verifiedOnly) {
+    query = query.not("user_id", "is", null);
+  }
+  return query;
+}
+
+/**
+ * Computes global rank for a score in a period (daily or all-time). Ties
+ * share a rank (counts strictly-better rows only) — good enough for a
+ * "you're #18" summary, but not precise enough to single out one row among
+ * several tied scores (see {@link fetchGlobalStandingExact} for that).
  *
  * @param sizeId - Board size.
  * @param mode - Game mode.
  * @param score - Submitted net/solo score.
- * @param period - `daily` or `all`.
+ * @param period - Time window.
  * @param verifiedOnly - When true, excludes guest (unverified) rows.
  * @returns Standing, or null if Supabase is unavailable / query failed.
  */
@@ -86,35 +179,64 @@ export async function fetchGlobalStanding(
   sizeId: FieldSizeId,
   mode: GameMode,
   score: number,
-  period: "daily" | "all",
+  period: LeaderboardPeriod,
   verifiedOnly = false,
 ): Promise<GlobalStanding | null> {
   if (!supabase) {
     return null;
   }
 
-  const startMs = periodStart(period);
-  const base = () => {
-    let query = supabase!
-      .from("scores")
-      .select("id", { count: "exact", head: true })
-      .eq("size_id", sizeId)
-      .eq("mode", mode)
-      .eq("verified", true);
-    if (period !== "all") {
-      query = query.gte("created_at", new Date(startMs).toISOString());
-    }
-    if (verifiedOnly) {
-      query = query.not("user_id", "is", null);
-    }
-    return query;
-  };
-
+  const base = () => standingBaseQuery(sizeId, mode, period, verifiedOnly);
   const [{ count: totalRaw, error: totalError }, { count: betterRaw, error: betterError }] =
     await Promise.all([base(), base().gt("score", score)]);
 
   if (totalError || betterError) {
     console.error("fetchGlobalStanding", totalError ?? betterError);
+    return null;
+  }
+
+  const total = Math.max(1, totalRaw ?? 0);
+  const better = betterRaw ?? 0;
+  return { rank: better + 1, total };
+}
+
+/**
+ * Computes the exact rank of one specific row, tie-broken by `created_at`
+ * ascending — matching the board's own ordering — so it can single out one
+ * row among several tied scores (needed to highlight the right one when
+ * more than one score in the window ties with the player's own).
+ *
+ * @param sizeId - Board size.
+ * @param mode - Game mode.
+ * @param score - The row's score.
+ * @param createdAtMs - The row's server-assigned `created_at` (epoch ms),
+ * as returned by {@link submitGlobalScore}.
+ * @param period - Time window.
+ * @param verifiedOnly - When true, excludes guest (unverified) rows.
+ * @returns Standing, or null if Supabase is unavailable / query failed.
+ */
+export async function fetchGlobalStandingExact(
+  sizeId: FieldSizeId,
+  mode: GameMode,
+  score: number,
+  createdAtMs: number,
+  period: LeaderboardPeriod,
+  verifiedOnly = false,
+): Promise<GlobalStanding | null> {
+  if (!supabase) {
+    return null;
+  }
+
+  const createdAtIso = new Date(createdAtMs).toISOString();
+  const base = () => standingBaseQuery(sizeId, mode, period, verifiedOnly);
+  const [{ count: totalRaw, error: totalError }, { count: betterRaw, error: betterError }] =
+    await Promise.all([
+      base(),
+      base().or(`score.gt.${score},and(score.eq.${score},created_at.lt.${createdAtIso})`),
+    ]);
+
+  if (totalError || betterError) {
+    console.error("fetchGlobalStandingExact", totalError ?? betterError);
     return null;
   }
 
@@ -143,10 +265,13 @@ export interface GlobalSubmitBody {
  * carry `guestId` in the body instead.
  *
  * @param body - Replay + claimed score.
- * @returns Error message or null on success.
+ * @returns Error message or null on success, plus the row's server-assigned
+ * `created_at` (epoch ms) on success — needed to later single this exact
+ * row out from others tied on score (see {@link fetchGlobalStandingExact}).
  */
 export async function submitGlobalScore(body: GlobalSubmitBody): Promise<{
   error: string | null;
+  createdAt?: number;
 }> {
   if (!supabase) {
     return { error: "Supabase is not configured" };
@@ -181,5 +306,7 @@ export async function submitGlobalScore(body: GlobalSubmitBody): Promise<{
   if (data && typeof data === "object" && "error" in data) {
     return { error: String((data as { error: string }).error) };
   }
-  return { error: null };
+  const createdAtRaw = (data as { score?: { created_at?: string } } | null)?.score?.created_at;
+  const createdAt = createdAtRaw ? Date.parse(createdAtRaw) : undefined;
+  return { error: null, createdAt };
 }

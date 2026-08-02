@@ -88,7 +88,10 @@ export function loadAllScores(): ScoreEntry[] {
  * @param period - Time window.
  * @param now - Reference instant for period bounds.
  * @param all - Optional preloaded scores (for tests).
- * @returns Up to {@link MAX_ENTRIES} rows.
+ * @param limit - Max rows to return (default {@link MAX_ENTRIES}); pass
+ * `Infinity` for the full ranked list, e.g. to look up a rank beyond the
+ * displayed board.
+ * @returns Up to `limit` rows.
  */
 export function getBoard(
   sizeId: FieldSizeId,
@@ -96,6 +99,7 @@ export function getBoard(
   period: LeaderboardPeriod,
   now: number = Date.now(),
   all: ScoreEntry[] = loadAllScores(),
+  limit: number = MAX_ENTRIES,
 ): ScoreEntry[] {
   const start = periodStart(period, now);
   return all
@@ -111,7 +115,36 @@ export function getBoard(
       }
       return a.createdAt - b.createdAt;
     })
-    .slice(0, MAX_ENTRIES);
+    .slice(0, limit);
+}
+
+/**
+ * Ranks that fall outside a displayed top-N board but should still be shown
+ * alongside a highlighted row — {@link rank} itself plus its immediate
+ * neighbors (rank − 1, rank + 1), clamped to the board's bounds and with
+ * anything already covered by the top N filtered out.
+ *
+ * Returns `[]` when `rank` is already within the top N (nothing extra to
+ * show) — callers should treat that as "highlight in place, no separate
+ * section" rather than "no rank to highlight".
+ *
+ * @param rank - 1-based rank of the row of interest.
+ * @param displayedCount - How many rows the top board already shows (N).
+ * @param total - Total rows in the full ranked list.
+ * @returns Extra ranks to show, ascending, always including `rank` itself
+ * when non-empty (so callers can source that row's data appropriately).
+ */
+export function neighborRanks(
+  rank: number,
+  displayedCount: number,
+  total: number,
+): number[] {
+  if (rank <= displayedCount) {
+    return [];
+  }
+  return [rank - 1, rank, rank + 1].filter(
+    (r) => r >= 1 && r <= total && r > displayedCount,
+  );
 }
 
 /**
