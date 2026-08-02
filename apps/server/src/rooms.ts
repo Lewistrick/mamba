@@ -59,6 +59,8 @@ export interface Room {
   lastGame: RoomLastGame | null;
   /** Sorted userId pair `wins`/`lastGame` apply to, or null before any pairing. */
   pairing: string | null;
+  /** Verified-players-only room; a guest can watch but not join/queue into it. */
+  ranked: boolean;
 }
 
 /** Result of creating a room. */
@@ -83,12 +85,14 @@ export class RoomManager {
    * @param host - Host seat.
    * @param sizeId - Board size.
    * @param visibility - Public or private.
+   * @param ranked - Verified-players-only room; forced false unless the host is verified.
    * @returns New room or error.
    */
   create(
     host: Seat,
     sizeId: FieldSizeId,
     visibility: RoomVisibility,
+    ranked = false,
   ): CreateResult {
     if (!["small", "medium", "large"].includes(sizeId)) {
       return { ok: false, error: "Invalid board size" };
@@ -123,6 +127,7 @@ export class RoomManager {
       wins: [0, 0],
       lastGame: null,
       pairing: null,
+      ranked: ranked && host.user.verified,
     };
     this.rooms.set(code, room);
     return { ok: true, room };
@@ -152,6 +157,9 @@ export class RoomManager {
     }
     if (room.seats[1]) {
       return { ok: false, error: "Room is full" };
+    }
+    if (room.ranked && !guest.user.verified) {
+      return { ok: false, error: "This room is for verified players only" };
     }
     room.seats[1] = guest;
     return { ok: true, room, index: 1 };
@@ -261,6 +269,9 @@ export class RoomManager {
     if (!seat) {
       return "Not spectating this room";
     }
+    if (room.ranked && !seat.user.verified) {
+      return "This room is for verified players only";
+    }
     if (!room.joinQueue.some((s) => s.user.userId === userId)) {
       room.joinQueue.push(seat);
     }
@@ -328,6 +339,7 @@ export class RoomManager {
         hostName: host.user.displayName,
         playerCount: room.seats.filter(Boolean).length,
         status: room.status,
+        ranked: room.ranked,
       });
     }
     return out.sort((a, b) => a.code.localeCompare(b.code));
@@ -365,6 +377,7 @@ export class RoomManager {
         ready: room.ready[i] ?? false,
         rematchWanted: room.rematch[i] ?? false,
         disconnected: room.disconnected[i] ?? false,
+        verified: seat.user.verified,
       });
     }
     const queuePos = forUserId
@@ -382,6 +395,7 @@ export class RoomManager {
       yourQueuePosition: queuePos >= 0 ? queuePos : null,
       wins: [...room.wins] as [number, number],
       lastGame: room.lastGame,
+      ranked: room.ranked,
     };
   }
 

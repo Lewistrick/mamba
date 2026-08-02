@@ -15,12 +15,14 @@ const MAX_ENTRIES = 10;
  * @param sizeId - Board size.
  * @param mode - Game mode.
  * @param period - Time window (UTC instant compared to created_at).
+ * @param verifiedOnly - When true, excludes guest (unverified) rows.
  * @returns Score rows for the UI.
  */
 export async function fetchGlobalBoard(
   sizeId: FieldSizeId,
   mode: GameMode,
   period: LeaderboardPeriod,
+  verifiedOnly = false,
 ): Promise<ScoreEntry[]> {
   if (!supabase) {
     return [];
@@ -29,7 +31,7 @@ export async function fetchGlobalBoard(
   const startMs = periodStart(period);
   let query = supabase
     .from("scores")
-    .select("display_name, score, level, size_id, mode, created_at")
+    .select("display_name, score, level, size_id, mode, created_at, user_id")
     .eq("size_id", sizeId)
     .eq("mode", mode)
     .eq("verified", true)
@@ -39,6 +41,9 @@ export async function fetchGlobalBoard(
 
   if (period !== "all") {
     query = query.gte("created_at", new Date(startMs).toISOString());
+  }
+  if (verifiedOnly) {
+    query = query.not("user_id", "is", null);
   }
 
   const { data, error } = await query;
@@ -54,6 +59,7 @@ export async function fetchGlobalBoard(
     sizeId: row.size_id as FieldSizeId,
     mode: row.mode as GameMode,
     createdAt: Date.parse(row.created_at as string),
+    verified: row.user_id != null,
   }));
 }
 
@@ -72,6 +78,7 @@ export interface GlobalStanding {
  * @param mode - Game mode.
  * @param score - Submitted net/solo score.
  * @param period - `daily` or `all`.
+ * @param verifiedOnly - When true, excludes guest (unverified) rows.
  * @returns Standing, or null if Supabase is unavailable / query failed.
  */
 export async function fetchGlobalStanding(
@@ -79,6 +86,7 @@ export async function fetchGlobalStanding(
   mode: GameMode,
   score: number,
   period: "daily" | "all",
+  verifiedOnly = false,
 ): Promise<GlobalStanding | null> {
   if (!supabase) {
     return null;
@@ -94,6 +102,9 @@ export async function fetchGlobalStanding(
       .eq("verified", true);
     if (period !== "all") {
       query = query.gte("created_at", new Date(startMs).toISOString());
+    }
+    if (verifiedOnly) {
+      query = query.not("user_id", "is", null);
     }
     return query;
   };
@@ -121,10 +132,14 @@ export interface GlobalSubmitBody {
   claimedScore: number;
   claimedLevel: number;
   displayName: string;
+  /** Persisted guest id — omit when submitting under a signed-in session. */
+  guestId?: string;
 }
 
 /**
  * Submits a replay to the verify-score function for global publication.
+ * Signed-in submits authenticate via the current session; guest submits
+ * carry `guestId` in the body instead.
  *
  * @param body - Replay + claimed score.
  * @returns Error message or null on success.
@@ -138,8 +153,8 @@ export async function submitGlobalScore(body: GlobalSubmitBody): Promise<{
 
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
-  if (!token) {
-    return { error: "Sign in to submit global scores" };
+  if (!token && !body.guestId) {
+    return { error: "Sign in or choose a name to submit global scores" };
   }
 
   const { data, error } = await supabase.functions.invoke("verify-score", {

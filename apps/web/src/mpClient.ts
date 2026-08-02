@@ -26,6 +26,8 @@ export interface RoomSnapshot {
     rematchWanted?: boolean;
     /** True while this seat's socket is down but still within the reconnect grace period. */
     disconnected?: boolean;
+    /** True for a signed-in account with a locked username; false for a guest. */
+    verified?: boolean;
   }[];
   hostUserId: string;
   /** Spectators currently queued to take the next vacated seat. */
@@ -36,6 +38,8 @@ export interface RoomSnapshot {
   wins: [number, number];
   /** Most recent finished game for the current seat pairing, or null. */
   lastGame: RoomLastGame | null;
+  /** Verified-players-only room; a guest can watch but not join/queue into it. */
+  ranked?: boolean;
 }
 
 /** Most recent finished game in a room, kept until the seat pairing changes. */
@@ -53,11 +57,13 @@ export interface PublicRoomInfo {
   playerCount: number;
   /** "waiting" rooms can be joined; any other (non-finished) status can only be watched. */
   status: RoomStatus;
+  /** Verified-players-only room; a guest can watch but not join. */
+  ranked: boolean;
 }
 
 /** Server → client messages. */
 export type MpServerMessage =
-  | { type: "auth_ok"; userId: string; displayName: string }
+  | { type: "auth_ok"; userId: string; displayName: string; verified: boolean }
   | {
       /** Sent right after auth_ok when this connection is re-attaching to a seat it disconnected from mid-match, instead of a fresh join. */
       type: "reconnected";
@@ -125,6 +131,7 @@ export class MpClient {
   private readonly handlers = new Set<Handler>();
   private readonly closeHandlers = new Set<() => void>();
   private authed = false;
+  private isVerified = false;
   /** Set by close() right before it tears down the socket, so the close event can tell an intentional close apart from a genuine drop. */
   private intentionalClose = false;
   /** Most recently requested direction, kept even while the socket is down so it can be re-sent on reconnect. */
@@ -172,11 +179,24 @@ export class MpClient {
   }
 
   /**
+   * True once the server confirmed this connection is a verified (signed-in)
+   * account, as opposed to a guest.
+   */
+  get verified(): boolean {
+    return this.isVerified;
+  }
+
+  /**
    * Opens the socket and waits until the server confirms auth.
    *
-   * @param accessToken - Supabase JWT.
+   * @param auth - A signed-in Supabase session, or a guest identity
+   * (persisted id + chosen name).
    */
-  async connect(accessToken: string): Promise<void> {
+  async connect(
+    auth:
+      | { kind: "account"; accessToken: string }
+      | { kind: "guest"; guestId: string; displayName: string },
+  ): Promise<void> {
     this.close();
     this.intentionalClose = false;
     await new Promise<void>((resolve, reject) => {
@@ -203,7 +223,15 @@ export class MpClient {
       };
 
       ws.addEventListener("open", () => {
-        this.send({ type: "auth", accessToken });
+        if (auth.kind === "account") {
+          this.send({ type: "auth", accessToken: auth.accessToken });
+        } else {
+          this.send({
+            type: "guest_auth",
+            guestId: auth.guestId,
+            displayName: auth.displayName,
+          });
+        }
       });
       ws.addEventListener("error", () => {
         fail("Could not connect to multiplayer server");
@@ -212,6 +240,7 @@ export class MpClient {
         try {
           const msg = JSON.parse(String(event.data)) as MpServerMessage;
           if (msg.type === "auth_ok") {
+            this.isVerified = msg.verified;
             succeed();
           } else if (msg.type === "error" && !this.authed && !settled) {
             fail(msg.message);
@@ -244,6 +273,7 @@ export class MpClient {
   close(): void {
     this.intentionalClose = true;
     this.authed = false;
+    this.isVerified = false;
     this.ws?.close();
     this.ws = null;
   }
@@ -253,9 +283,10 @@ export class MpClient {
    *
    * @param sizeId - Board size.
    * @param visibility - Public or private.
+   * @param ranked - Verified-players-only room; ignored unless this client is verified.
    */
-  createRoom(sizeId: FieldSizeId, visibility: RoomVisibility): void {
-    this.send({ type: "create_room", sizeId, visibility });
+  createRoom(sizeId: FieldSizeId, visibility: RoomVisibility, ranked = false): void {
+    this.send({ type: "create_room", sizeId, visibility, ranked });
   }
 
   /**

@@ -98,6 +98,12 @@ export interface MpUiHooks {
   onQueueInfo: (text: string | null) => void;
   /** Fresh room entry (create/join/watch) — optimistic clear before the server confirms. */
   onEnterRoom: () => void;
+  /**
+   * The guest identity to connect with when there's no signed-in Supabase
+   * session — null if the guest hasn't chosen a name yet (shouldn't happen,
+   * since Multiplayer entry is gated on it, but guards a stale call).
+   */
+  getGuestIdentity: () => { guestId: string; displayName: string } | null;
 }
 
 /**
@@ -258,11 +264,18 @@ export class MpLobbyController {
       return;
     }
     const session = await getSession();
-    if (!session?.access_token) {
-      if (status) {
-        status.textContent = "Sign in with a username to play online 1v1";
+    let auth: { kind: "account"; accessToken: string } | { kind: "guest"; guestId: string; displayName: string };
+    if (session?.access_token) {
+      auth = { kind: "account", accessToken: session.access_token };
+    } else {
+      const guest = this.hooks.getGuestIdentity();
+      if (!guest) {
+        if (status) {
+          status.textContent = "Choose a name to play online, then try again";
+        }
+        return;
       }
-      return;
+      auth = { kind: "guest", guestId: guest.guestId, displayName: guest.displayName };
     }
     if (status) {
       status.textContent = "Connecting…";
@@ -274,7 +287,7 @@ export class MpLobbyController {
       this.unsub = this.client.onMessage((msg) => this.onMessage(msg));
       this.unsubClose?.();
       this.unsubClose = this.client.onClose(() => this.onSocketClosed());
-      await this.client.connect(session.access_token);
+      await this.client.connect(auth);
     } catch (err) {
       this.client = null;
       if (status) {
@@ -455,6 +468,11 @@ export class MpLobbyController {
     return el?.value === "private" ? "private" : "public";
   }
 
+  private selectedRanked(): boolean {
+    const el = this.root.querySelector<HTMLInputElement>("#mp-ranked");
+    return Boolean(el?.checked);
+  }
+
   private async createRoom(): Promise<void> {
     const status = this.root.querySelector<HTMLElement>("#mp-status");
     try {
@@ -463,7 +481,7 @@ export class MpLobbyController {
         return;
       }
       const sizeId = this.selectedSize();
-      this.client.createRoom(sizeId, this.selectedVisibility());
+      this.client.createRoom(sizeId, this.selectedVisibility(), this.selectedRanked());
       this.pregameShown = false;
       this.spectating = false;
       this.resetQueueToggle();
@@ -969,10 +987,11 @@ export class MpLobbyController {
       const li = document.createElement("li");
       const label = document.createElement("span");
       label.textContent = `${r.code} · ${r.sizeId} · ${r.hostName} (${r.playerCount}/2)${
-        r.status === "waiting" ? "" : ` · ${r.status}`
-      }`;
+        r.ranked ? " · Ranked" : ""
+      }${r.status === "waiting" ? "" : ` · ${r.status}`}`;
       li.append(label);
-      if (r.status === "waiting") {
+      // Ranked rooms only allow verified players to join — guests can still watch.
+      if (r.status === "waiting" && (!r.ranked || this.client?.verified)) {
         const joinBtn = document.createElement("button");
         joinBtn.type = "button";
         joinBtn.className = "mp-room-btn";

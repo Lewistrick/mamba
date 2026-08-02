@@ -55,12 +55,28 @@
                     <label><input type="radio" name="ai-difficulty" value="hard" /> Hard</label>
                 </fieldset>
 
+                <section id="guest-gate" class="auth-panel" hidden>
+                    <h2>Choose a name</h2>
+                    <p class="hint">Guests need a name before playing — it's used on the
+                        leaderboards and in multiplayer. Verified accounts skip this.</p>
+                    <form id="guest-gate-form" class="auth-form">
+                        <label class="name-label">
+                            Name
+                            <input id="guest-gate-name" type="text" maxlength="12" autocomplete="nickname"
+                                spellcheck="false" required />
+                        </label>
+                        <button type="submit" class="primary">Continue</button>
+                    </form>
+                </section>
+
                 <button type="button" id="btn-play" class="primary">Play</button>
                 <button type="button" id="btn-multiplayer" class="secondary">Multiplayer</button>
 
                 <section id="auth-panel" class="auth-panel" hidden>
                     <h2>Account</h2>
                     <p id="auth-status" class="auth-status">Guest (local scores only)</p>
+                    <button type="button" id="btn-guest-change-name" class="text-btn" hidden>Change
+                        name</button>
                     <form id="auth-form" class="auth-form">
                         <label class="name-label">
                             Email
@@ -123,15 +139,6 @@
                             <p id="go-mp-elo" class="go-mp-elo" hidden></p>
                         </div>
                         <p id="go-save-status" class="go-save-status" hidden></p>
-                        <form id="guest-score-form" class="guest-score-form">
-                            <label class="name-label">
-                                Name
-                                <input id="guest-name" type="text" maxlength="12" autocomplete="nickname"
-                                    spellcheck="false" />
-                            </label>
-                            <button type="submit" class="primary">Save score</button>
-                        </form>
-                        <p id="go-too-low" class="hint go-too-low" hidden></p>
                         <p id="go-account-cta" class="go-account-cta" hidden>
                             Create an account or login<br />to compete in global leaderboards
                         </p>
@@ -161,6 +168,9 @@
                         <option value="daily">Daily</option>
                     </select>
                 </div>
+                <label class="lb-hide-guests hint" id="lb-hide-guests-field" hidden>
+                    <input type="checkbox" id="lb-hide-guests" /> Verified players only
+                </label>
                 <ol id="lb-list" class="lb-list"></ol>
                 <p id="lb-empty" class="lb-empty">No scores yet</p>
             </aside>
@@ -353,7 +363,7 @@
                 <button type="button" id="btn-mp-back" class="secondary">← Back</button>
                 <h1>Multiplayer</h1>
             </header>
-            <p id="mp-status" class="hint">Sign in with a username to play online 1v1.</p>
+            <p id="mp-status" class="hint">Play online 1v1 as a guest, or sign in for a verified badge + ranked play.</p>
             <div class="help-content" id="mp-lobby">
                 <section class="profile-card">
                     <h2>Create room</h2>
@@ -369,6 +379,9 @@
                             (listed)</label>
                         <label><input type="radio" name="mp-visibility" value="private" /> Private (code only)</label>
                     </fieldset>
+                    <label class="mp-ranked-field hint" id="mp-ranked-field" hidden>
+                        <input type="checkbox" id="mp-ranked" /> Ranked — verified players only
+                    </label>
                     <button type="button" id="btn-mp-create" class="primary">Create room</button>
                     <p id="mp-code" class="mp-code" hidden></p>
                 </section>

@@ -25,6 +25,8 @@ export interface RoomPlayerInfo {
   rematchWanted: boolean;
   /** True while this seat's socket is down but still within the reconnect grace period. */
   disconnected: boolean;
+  /** True for a signed-in account with a locked username; false for a guest. */
+  verified: boolean;
 }
 
 /** Public listing row. */
@@ -35,6 +37,8 @@ export interface PublicRoomInfo {
   playerCount: number;
   /** "waiting" rooms can be joined; any other status (including "finished") can only be watched. */
   status: RoomStatus;
+  /** Ranked rooms only allow verified players to join (guests may still watch). */
+  ranked: boolean;
 }
 
 /** Most recent finished game in a room, kept until the seat pairing changes. */
@@ -65,12 +69,21 @@ export interface RoomSnapshot {
   wins: [number, number];
   /** Most recent finished game for the current seat pairing, or null. */
   lastGame: RoomLastGame | null;
+  /** Ranked rooms only allow verified players to join (guests may still watch). */
+  ranked: boolean;
 }
 
 /** Client → server. */
 export type ClientMessage =
   | { type: "auth"; accessToken: string }
-  | { type: "create_room"; sizeId: FieldSizeId; visibility: RoomVisibility }
+  | { type: "guest_auth"; guestId: string; displayName: string }
+  | {
+      type: "create_room";
+      sizeId: FieldSizeId;
+      visibility: RoomVisibility;
+      /** Verified-players-only room; ignored (forced false) unless the creator is verified. */
+      ranked?: boolean;
+    }
   | { type: "join_room"; code: string }
   | { type: "list_public" }
   | { type: "leave" }
@@ -86,7 +99,7 @@ export type ClientMessage =
 
 /** Server → client. */
 export type ServerMessage =
-  | { type: "auth_ok"; userId: string; displayName: string }
+  | { type: "auth_ok"; userId: string; displayName: string; verified: boolean }
   | {
       /** Sent right after auth_ok when this connection is re-attaching to a seat it disconnected from mid-match, instead of a fresh join. */
       type: "reconnected";
