@@ -47,7 +47,20 @@ export interface MpUiHooks {
     ready: [boolean, boolean],
   ) => void;
   onCountdown: (state: GameState, youIndex: number, names: [string, string]) => void;
-  onMatchState: (state: GameState, youIndex: number, names: [string, string]) => void;
+  /**
+   * @param justReconnected - True only for the one `state` message that
+   * immediately follows a `reconnected` catch-up — the local player's
+   * predicted position should be hard-synced to it (a connection outage
+   * means locally-queued input may have been lost). False for every other
+   * (routine) tick, where the local player's own snake stays purely
+   * client-predicted rather than getting corrected by the server.
+   */
+  onMatchState: (
+    state: GameState,
+    youIndex: number,
+    names: [string, string],
+    justReconnected: boolean,
+  ) => void;
   onMatchOver: (
     state: GameState,
     youIndex: number,
@@ -116,6 +129,12 @@ export class MpLobbyController {
   private room: RoomSnapshot | null = null;
   private openPromise: Promise<void> | null = null;
   private pregameShown = false;
+  /**
+   * Set on a "reconnected" message; consumed by (and cleared after) the very
+   * next "state" message, so only that one catch-up tick is flagged to the
+   * UI as needing a hard prediction resync.
+   */
+  private awaitingReconnectCatchUp = false;
   private countdownUiTimer: ReturnType<typeof setInterval> | null = null;
   /** Next pregame is a rematch — skip the “opponent joined” sound. */
   private expectRematchPregame = false;
@@ -649,7 +668,10 @@ export class MpLobbyController {
         this.hooks.setStatus("Reconnected");
         this.setMatchUi(true);
         // The very next message is the authoritative catch-up (state), which
-        // flows through the existing "state" handler below unchanged.
+        // flows through the existing "state" handler below unchanged — flag
+        // it so the UI hard-resyncs prediction just this once (an outage may
+        // have lost locally-queued input, so the client can't trust it here).
+        this.awaitingReconnectCatchUp = true;
         this.client?.resendLastInput();
         break;
       }
@@ -757,7 +779,9 @@ export class MpLobbyController {
         const view = remapStateForYou(msg.state, msg.youIndex);
         this.clearCountdownUi();
         this.hooks.hideReadyOverlay();
-        this.hooks.onMatchState(view, msg.youIndex, msg.names);
+        const justReconnected = this.awaitingReconnectCatchUp;
+        this.awaitingReconnectCatchUp = false;
+        this.hooks.onMatchState(view, msg.youIndex, msg.names, justReconnected);
         this.setMatchUi(true);
         break;
       }

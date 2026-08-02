@@ -14,6 +14,13 @@ export interface PredictedSnake {
   body: Point[];
   direction: Direction;
   queue: Direction[];
+  /**
+   * Ticks remaining where the tail shouldn't be dropped. Growth is a
+   * pellet-eating event this module never detects on its own (see the file
+   * doc comment) — the caller signals it externally (by comparing the
+   * server's reported body length) and queues it up here. Defaults to 0.
+   */
+  growPending?: number;
 }
 
 /**
@@ -44,19 +51,23 @@ export function queueLocalDirection(
 
 /**
  * Advances a predicted snake by one tick: consumes one queued turn (if any,
- * mirroring `Game.tick()`'s reject-if-reversed rule), then moves the head one
- * cell and drops the tail — no growth, no collision/death detection, no
- * pellet awareness. The head is clamped to the field bounds purely so a
- * near-wall death doesn't render outside the playfield; it never decides
- * that the snake died.
+ * mirroring `Game.tick()`'s reject-if-reversed rule), then moves the head
+ * one cell — dropping the tail as usual, unless `growPending` says the
+ * server signaled a pellet was eaten (see {@link PredictedSnake.growPending}),
+ * in which case the tail is kept instead, growing the body by one using its
+ * own already-tracked segments (no foreign server data spliced in). No
+ * collision/death detection either way — the head is clamped to the field
+ * bounds purely so a near-wall death doesn't render outside the playfield;
+ * it never decides that the snake died.
  *
- * @param snake - Current predicted body/direction/queue.
+ * @param snake - Current predicted body/direction/queue/growPending.
  * @param width - Field width in cells.
  * @param height - Field height in cells.
  * @returns Next predicted snake state (new objects; input is not mutated).
  */
 export function advancePredicted(snake: PredictedSnake, width: number, height: number): PredictedSnake {
   const { body, direction, queue } = snake;
+  const growPending = snake.growPending ?? 0;
   if (body.length === 0) {
     return snake;
   }
@@ -77,9 +88,14 @@ export function advancePredicted(snake: PredictedSnake, width: number, height: n
     x: clamp(head.x + delta.x, 0, width - 1),
     y: clamp(head.y + delta.y, 0, height - 1),
   };
-  const nextBody = [nextHead, ...body.slice(0, -1)];
+  const nextBody = growPending > 0 ? [nextHead, ...body] : [nextHead, ...body.slice(0, -1)];
 
-  return { body: nextBody, direction: nextDirection, queue: nextQueue };
+  return {
+    body: nextBody,
+    direction: nextDirection,
+    queue: nextQueue,
+    growPending: Math.max(0, growPending - 1),
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {

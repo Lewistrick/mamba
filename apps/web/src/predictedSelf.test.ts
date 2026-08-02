@@ -97,4 +97,34 @@ describe("advancePredicted", () => {
     advancePredicted(original, 20, 11);
     expect(original.body).toEqual(body);
   });
+
+  it("keeps the tail (grows by one) when growPending is set", () => {
+    const next = advancePredicted(
+      { ...snake([{ x: 5, y: 5 }, { x: 4, y: 5 }], "Right"), growPending: 1 },
+      20,
+      11,
+    );
+    expect(next.body).toEqual([{ x: 6, y: 5 }, { x: 5, y: 5 }, { x: 4, y: 5 }]);
+    expect(next.growPending).toBe(0);
+  });
+
+  it("decrements growPending across multiple queued growth ticks", () => {
+    const first = advancePredicted(
+      { ...snake([{ x: 5, y: 5 }], "Right"), growPending: 2 },
+      20,
+      11,
+    );
+    expect(first.body).toHaveLength(2);
+    expect(first.growPending).toBe(1);
+    const second = advancePredicted(first, 20, 11);
+    expect(second.body).toHaveLength(3);
+    expect(second.growPending).toBe(0);
+    const third = advancePredicted(second, 20, 11);
+    expect(third.body).toHaveLength(3);
+  });
+
+  it("treats a missing growPending as 0 (drops the tail as usual)", () => {
+    const next = advancePredicted(snake([{ x: 5, y: 5 }, { x: 4, y: 5 }], "Right"), 20, 11);
+    expect(next.body).toEqual([{ x: 6, y: 5 }, { x: 5, y: 5 }]);
+  });
 });

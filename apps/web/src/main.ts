@@ -385,13 +385,19 @@ let lastTime = performance.now();
 /**
  * Lightweight local prediction for the player's own snake in multiplayer —
  * lets a keypress move it immediately instead of waiting on a full server
- * round trip. Re-seeded from the authoritative state on every pregame/
- * countdown/state message; pellets, collisions, and scoring are never
- * predicted, only the body/direction/queued turns. See predictedSelf.ts.
+ * round trip. Hard-reseeded only at a fresh match start or after a
+ * reconnect (see resyncPrediction); routine "state" messages during live
+ * play never correct the position/direction/queue, only growth/molt (see
+ * applyPredictedGrowth) — collisions and scoring are never predicted at
+ * all. See predictedSelf.ts.
  */
 let predictedBody: Point[] = [];
 let predictedDirection: Direction = "Right";
 let predictedQueue: Direction[] = [];
+/** Ticks queued for advancePredicted to keep its tail on (growth signaled by the server, see applyPredictedGrowth). */
+let predictedGrowPending = 0;
+/** Server-reported body length as of the last "state" message, for diffing growth/molt in applyPredictedGrowth. */
+let lastKnownMpBodyLength = 0;
 /** Wall-clock time of the last authoritative multiplayer match update, for opponent staleness dimming. */
 let lastMpStateAt = performance.now();
 let signedInEmail: string | null = null;
@@ -463,8 +469,36 @@ function resyncPrediction(view: GameState, clearQueue: boolean): void {
   predictedDirection = you.direction;
   if (clearQueue) {
     predictedQueue = [];
+    predictedGrowPending = 0;
+    lastKnownMpBodyLength = you.body.length;
   }
   lastMpStateAt = performance.now();
+}
+
+/**
+ * Signals growth/molt to the local prediction without touching its
+ * position/direction/queue (see resyncPrediction's doc comment for why
+ * those stay purely local during live play). Growth and molting are
+ * server-only events advancePredicted can't detect on its own — it's
+ * deliberately pellet-blind — so this compares the server's reported body
+ * length against what was last observed: longer queues up `growPending`
+ * ticks where advancePredicted keeps its own tail instead of dropping it
+ * (organic growth from the prediction's own tracked segments, nothing
+ * spliced in from the server); shorter (a molt) truncates immediately to
+ * the server's new length, keeping only the prediction's own newest
+ * segments — matching "keeps the newest five segments".
+ *
+ * @param view - Authoritative state.
+ */
+function applyPredictedGrowth(view: GameState): void {
+  const serverLen = view.players[0]?.body.length ?? 0;
+  if (serverLen > lastKnownMpBodyLength) {
+    predictedGrowPending += serverLen - lastKnownMpBodyLength;
+  } else if (serverLen < lastKnownMpBodyLength) {
+    predictedBody = predictedBody.slice(0, serverLen);
+    predictedGrowPending = 0;
+  }
+  lastKnownMpBodyLength = serverLen;
 }
 
 /**
@@ -587,11 +621,25 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     playBtn.textContent = "Leave match";
     setStatus("Starting…");
   },
-  onMatchState: (view) => {
+  onMatchState: (view, _youIndex, _names, justReconnected) => {
     mpPlaying = true;
     inMpRoom = true;
     state = view;
-    resyncPrediction(view, false);
+    lastMpStateAt = performance.now();
+    // The local player's own snake position/direction/queue is purely
+    // client-predicted during normal play — routine "state" ticks never
+    // correct it, since server and client can drift out of sync with each
+    // other's independent tick clocks and constantly snapping to a
+    // slightly-stale server position fights the very prediction that's
+    // supposed to make input feel instant. Growth/molt still need the
+    // server's signal (applyPredictedGrowth), since pellets are never
+    // predicted. Only a genuine reconnect (locally-queued input may have
+    // been lost during the outage) warrants a full hard resync.
+    if (justReconnected) {
+      resyncPrediction(view, true);
+    } else {
+      applyPredictedGrowth(view);
+    }
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -2210,13 +2258,19 @@ function frame(now: number): void {
     const step = 1 / TICKS_PER_SECOND;
     while (accumulator >= step) {
       const predicted = advancePredicted(
-        { body: predictedBody, direction: predictedDirection, queue: predictedQueue },
+        {
+          body: predictedBody,
+          direction: predictedDirection,
+          queue: predictedQueue,
+          growPending: predictedGrowPending,
+        },
         state.width,
         state.height,
       );
       predictedBody = predicted.body;
       predictedDirection = predicted.direction;
       predictedQueue = predicted.queue;
+      predictedGrowPending = predicted.growPending ?? 0;
       accumulator -= step;
     }
   }
