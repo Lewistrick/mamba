@@ -444,11 +444,26 @@ function extractYellowCandidates(events: GameState["events"]): { pos: Point; dif
   return null;
 }
 
-function resyncPrediction(view: GameState): void {
+/**
+ * Resyncs the local player's predicted body/direction to the authoritative
+ * state.
+ *
+ * @param view - Authoritative state.
+ * @param clearQueue - True to also discard any locally-queued-but-not-yet-
+ * applied turn — only correct at a genuinely fresh match start (pregame/
+ * countdown). During live play, `state` messages arrive far more often than
+ * the player turns, so clearing the queue here would wipe out a turn the
+ * server hasn't caught up to yet almost every time it happens — the snake
+ * keeps going straight, then snaps into the turn only once the server's own
+ * broadcast catches up, instead of turning smoothly.
+ */
+function resyncPrediction(view: GameState, clearQueue: boolean): void {
   const you = view.players[0];
   predictedBody = you.body.map((p) => ({ x: p.x, y: p.y }));
   predictedDirection = you.direction;
-  predictedQueue = [];
+  if (clearQueue) {
+    predictedQueue = [];
+  }
   lastMpStateAt = performance.now();
 }
 
@@ -546,7 +561,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onPregame: (view) => {
     state = view;
-    resyncPrediction(view);
+    resyncPrediction(view, true);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -560,7 +575,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
   },
   onCountdown: (view) => {
     state = view;
-    resyncPrediction(view);
+    resyncPrediction(view, true);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -576,7 +591,7 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     mpPlaying = true;
     inMpRoom = true;
     state = view;
-    resyncPrediction(view);
+    resyncPrediction(view, false);
     game = null;
     aiBrain = null;
     screen = "playing";
@@ -1882,6 +1897,11 @@ function startGame(): void {
   paused = false;
   adminCandidates = null;
   lastPlayedEntry = null;
+  // A prior multiplayer match can leave inMpRoom stuck true after game-over
+  // (mpPlaying already flips false there, so the mpPlaying/spectating guard
+  // above never catches it) — clear it so the Scores panel isn't hidden in
+  // favor of the (now-stale) multiplayer standings sidebar.
+  inMpRoom = false;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (settings.playMode === "ai") {
     game = Game.versusAi(settings.sizeId, seed);
