@@ -53,6 +53,7 @@ import {
   fetchMyScores,
   fetchProfile,
   getSession,
+  isDisplayNameReserved,
   setAccountUsername,
   signInWithMagicLink,
   signInWithPassword,
@@ -143,10 +144,10 @@ const goMpResult = document.querySelector<HTMLElement>("#go-mp-result");
 const goMpTable = document.querySelector<HTMLTableElement>("#go-mp-table");
 const goMpElo = document.querySelector<HTMLElement>("#go-mp-elo");
 const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
-const goAccountCta = document.querySelector<HTMLElement>("#go-account-cta");
 const guestGate = document.querySelector<HTMLElement>("#guest-gate");
 const guestGateForm = document.querySelector<HTMLFormElement>("#guest-gate-form");
 const guestGateNameInput = document.querySelector<HTMLInputElement>("#guest-gate-name");
+const guestGateMsg = document.querySelector<HTMLElement>("#guest-gate-msg");
 const guestChangeNameBtn = document.querySelector<HTMLButtonElement>("#btn-guest-change-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
 const playAgainWait = document.querySelector<HTMLElement>("#go-play-again-wait");
@@ -221,10 +222,10 @@ if (
   !goMpTable ||
   !goMpElo ||
   !goSaveStatus ||
-  !goAccountCta ||
   !guestGate ||
   !guestGateForm ||
   !guestGateNameInput ||
+  !guestGateMsg ||
   !guestChangeNameBtn ||
   !playAgainBtn ||
   !playAgainWait ||
@@ -297,10 +298,10 @@ const goMpResultEl = goMpResult;
 const goMpTableEl = goMpTable;
 const goMpEloEl = goMpElo;
 const goSaveStatusEl = goSaveStatus;
-const goAccountCtaEl = goAccountCta;
 const guestGateEl = guestGate;
 const guestGateFormEl = guestGateForm;
 const guestGateNameEl = guestGateNameInput;
+const guestGateMsgEl = guestGateMsg;
 const guestChangeNameEl = guestChangeNameBtn;
 const playAgainEl = playAgainBtn;
 const playAgainWaitEl = playAgainWait;
@@ -751,6 +752,7 @@ function syncGuestGate(): void {
   guestGateEl.hidden = !show;
   if (show) {
     guestGateNameEl.value = settings.playerName;
+    setProfileMsg(guestGateMsgEl, null);
   }
 }
 
@@ -1068,7 +1070,7 @@ async function refreshAuthUi(): Promise<void> {
   if (!signedInEmail) {
     authStatusEl.textContent = settings.hasChosenName
       ? `Guest — playing as "${settings.playerName}"`
-      : "Guest — local scores only";
+      : "Guest — choose a name to play";
     guestChangeNameEl.hidden = !settings.hasChosenName;
     mpRankedFieldEl.hidden = true;
     authFormEl.hidden = false;
@@ -1372,8 +1374,6 @@ function setGoSaveStatus(text: string | null, kind: "ok" | "error" | "pending" =
  */
 function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
-  goAccountCtaEl.hidden = true;
-  authEl.classList.remove("cta-highlight");
   leaveRoomEl.hidden = true;
   playAgainEl.hidden = false;
   playAgainWaitEl.hidden = true;
@@ -1386,16 +1386,13 @@ function hideGameOverOverlay(): void {
  * Shows the game-over overlay over the playfield.
  *
  * @param pending - Score + replay payload.
- * @param mode - Guest or signed-in — both auto-save now that a guest's name
- * is already known before playing.
  */
-function showGameOverOverlay(pending: PendingScore, mode: "guest" | "account"): void {
+function showGameOverOverlay(pending: PendingScore): void {
   overlayEl.hidden = false;
   leaveRoomEl.hidden = true;
   goMpSummaryEl.hidden = true;
   goScoreEl.hidden = false;
   goScoreEl.textContent = `Score: ${pending.score}`;
-  goAccountCtaEl.hidden = mode === "account";
   setGoSaveStatus("Saving score…", "pending");
 }
 
@@ -1739,11 +1736,11 @@ function onGameOver(final: GameState, run: Game): void {
     final.players.length > 1 ? `Net ${score}` : `Score ${score}`;
 
   if (signedInEmail && profile?.usernameSet) {
-    showGameOverOverlay(pending, "account");
+    showGameOverOverlay(pending);
     goScoreEl.textContent = summary;
     void autoSaveAccountScore(pending);
   } else if (!signedInEmail) {
-    showGameOverOverlay(pending, "guest");
+    showGameOverOverlay(pending);
     goScoreEl.textContent = summary;
     void autoSaveGuestScore(pending);
   } else {
@@ -2033,14 +2030,40 @@ mpReadyLeaveEl.addEventListener("click", leaveMultiplayerRoom);
 
 guestGateFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
-  const name = sanitizeName(guestGateNameEl.value);
-  guestGateNameEl.value = name;
-  settings.playerName = name;
-  settings.hasChosenName = true;
-  saveSettings(settings);
-  guestGateOpen = false;
-  syncGuestGate();
-  syncPlayButton();
+  void (async () => {
+    const name = sanitizeName(guestGateNameEl.value);
+    guestGateNameEl.value = name;
+    if (!name) {
+      setProfileMsg(guestGateMsgEl, "Choose a name before playing", "error");
+      return;
+    }
+    const submitBtn = guestGateFormEl.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+    setProfileMsg(guestGateMsgEl, "Checking name…", "ok");
+    try {
+      if (await isDisplayNameReserved(name)) {
+        setProfileMsg(
+          guestGateMsgEl,
+          "That name is taken by a verified player — choose another",
+          "error",
+        );
+        return;
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+      }
+    }
+    settings.playerName = name;
+    settings.hasChosenName = true;
+    saveSettings(settings);
+    guestGateOpen = false;
+    syncGuestGate();
+    syncPlayButton();
+    void refreshAuthUi();
+  })();
 });
 
 guestChangeNameEl.addEventListener("click", () => {
@@ -2048,13 +2071,6 @@ guestChangeNameEl.addEventListener("click", () => {
   syncGuestGate();
   guestGateNameEl.focus();
   guestGateNameEl.select();
-});
-
-goAccountCtaEl.addEventListener("mouseenter", () => {
-  authEl.classList.add("cta-highlight");
-});
-goAccountCtaEl.addEventListener("mouseleave", () => {
-  authEl.classList.remove("cta-highlight");
 });
 
 periodSelect.addEventListener("change", () => {

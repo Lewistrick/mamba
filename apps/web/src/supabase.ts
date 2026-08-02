@@ -205,6 +205,33 @@ export async function fetchProfile(): Promise<Profile | null> {
 }
 
 /**
+ * Checks whether a name is locked to a verified account, so a guest can't
+ * choose (or keep) a name that would collide with one. Mirrors the same
+ * check the server runs on guest MP auth / global score submission.
+ *
+ * @param name - Candidate display name (not yet sanitized).
+ * @returns True if a verified account already owns this name.
+ */
+export async function isDisplayNameReserved(name: string): Promise<boolean> {
+  if (!supabase) {
+    return false;
+  }
+  const escaped = name.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("username_set", true)
+    .ilike("display_name", escaped)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("isDisplayNameReserved", error.message);
+    return false;
+  }
+  return data != null;
+}
+
+/**
  * Sets the account username once (rejected by the app if already set).
  *
  * @param displayName - Chosen name.

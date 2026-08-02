@@ -66,6 +66,7 @@
                                 spellcheck="false" required />
                         </label>
                         <button type="submit" class="primary">Continue</button>
+                        <p id="guest-gate-msg" class="auth-confirm" hidden></p>
                     </form>
                 </section>
 
@@ -74,7 +75,7 @@
 
                 <section id="auth-panel" class="auth-panel" hidden>
                     <h2>Account</h2>
-                    <p id="auth-status" class="auth-status">Guest (local scores only)</p>
+                    <p id="auth-status" class="auth-status">Guest — choose a name to play</p>
                     <button type="button" id="btn-guest-change-name" class="text-btn" hidden>Change
                         name</button>
                     <form id="auth-form" class="auth-form">
@@ -139,9 +140,6 @@
                             <p id="go-mp-elo" class="go-mp-elo" hidden></p>
                         </div>
                         <p id="go-save-status" class="go-save-status" hidden></p>
-                        <p id="go-account-cta" class="go-account-cta" hidden>
-                            Create an account or login<br />to compete in global leaderboards
-                        </p>
                         <button type="button" id="btn-play-again" class="secondary go-action-btn">
                             Play again<span class="go-hotkey">Enter</span>
                         </button>

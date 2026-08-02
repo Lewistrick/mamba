@@ -3,6 +3,7 @@
  */
 
 import type { FieldSizeId } from "@mamba/engine";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import type { GameMode, LeaderboardPeriod, ScoreEntry } from "./leaderboard.ts";
 import { periodStart } from "./leaderboard.ts";
 import { supabase } from "./supabase.ts";
@@ -162,6 +163,19 @@ export async function submitGlobalScore(body: GlobalSubmitBody): Promise<{
   });
 
   if (error) {
+    // The client library discards the response body on non-2xx status
+    // codes, surfacing only a generic "non-2xx status code" message — pull
+    // the actual { error: "..." } reason back out of the raw response.
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const responseBody = (await error.context.json()) as { error?: string };
+        if (responseBody?.error) {
+          return { error: responseBody.error };
+        }
+      } catch {
+        // Fall through to the generic message below.
+      }
+    }
     return { error: error.message };
   }
   if (data && typeof data === "object" && "error" in data) {
