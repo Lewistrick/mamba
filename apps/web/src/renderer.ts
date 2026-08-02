@@ -38,6 +38,30 @@ const GAP = 1;
 /** Must match the client simulation rate in main.ts. */
 const TICKS_PER_SECOND = 10;
 
+/**
+ * 5×7 block font for the title screen, one glyph per letter used in "MAMBA".
+ * Each glyph has exactly one "head" pixel (bright, smiley-faced) and one
+ * "tail" pixel (chevron-notched) so each letter reads as a tiny snake — the
+ * rest render as plain body blocks.
+ */
+const TITLE_FONT: Record<string, { rows: string[]; head: [row: number, col: number]; tail: [row: number, col: number] }> = {
+  M: {
+    rows: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    head: [6, 0],
+    tail: [6, 4],
+  },
+  A: {
+    rows: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    head: [6, 0],
+    tail: [6, 4],
+  },
+  B: {
+    rows: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+    head: [3, 0],
+    tail: [6, 0],
+  },
+};
+
 /** Viewport budget used to fit the board on screen. */
 export interface FitBudget {
   maxWidth: number;
@@ -152,6 +176,8 @@ export class Renderer {
        * closer to the opponent).
        */
       adminCandidates?: readonly { pos: Point; diff: number }[];
+      /** Shows the pixel-art "MAMBA" title + start hint instead of an empty field. */
+      titleScreen?: boolean;
     },
   ): void {
     const width = state?.width ?? 40;
@@ -179,6 +205,10 @@ export class Renderer {
       if (options?.adminCandidates?.length) {
         this.drawAdminCandidates(this.fieldOrigin(), options.adminCandidates);
       }
+    }
+
+    if (options?.titleScreen) {
+      this.drawTitleScreen(width, height);
     }
 
     if (overlay === "paused") {
@@ -283,6 +313,116 @@ export class Renderer {
   private drawEmptyField(width: number, height: number): void {
     const origin = this.fieldOrigin();
     this.strokeBorder(origin.x, origin.y, width * this.cell, height * this.cell);
+  }
+
+  /**
+   * Draws the home-screen "MAMBA" wordmark in blocky snake-yellow pixels,
+   * plus a white start hint, centered over the empty field.
+   */
+  private drawTitleScreen(width: number, height: number): void {
+    const { ctx } = this;
+    const origin = this.fieldOrigin();
+    const fieldW = width * this.cell;
+    const fieldH = height * this.cell;
+
+    const word = "MAMBA";
+    const letterCols = 5;
+    const letterRows = 7;
+    const letterGap = 1;
+    const totalCols = word.length * letterCols + (word.length - 1) * letterGap;
+
+    let blockSize = Math.floor((fieldW * 0.8) / totalCols);
+    blockSize = Math.min(blockSize, Math.floor((fieldH * 0.4) / letterRows));
+    blockSize = Math.max(3, blockSize);
+
+    const artW = totalCols * blockSize;
+    const artH = letterRows * blockSize;
+    const subtitleFontSize = Math.max(11, Math.min(18, Math.floor(blockSize * 1.5)));
+    const gap = Math.max(12, blockSize);
+    const subtitleH = subtitleFontSize + 6;
+
+    const startX = origin.x + (fieldW - artW) / 2;
+    const startY = origin.y + (fieldH - (artH + gap + subtitleH)) / 2;
+
+    let cursorX = startX;
+    for (const letter of word) {
+      const glyph = TITLE_FONT[letter];
+      for (let row = 0; row < letterRows; row += 1) {
+        for (let col = 0; col < letterCols; col += 1) {
+          if (glyph.rows[row][col] !== "1") {
+            continue;
+          }
+          const x = cursorX + col * blockSize;
+          const y = startY + row * blockSize;
+          if (row === glyph.head[0] && col === glyph.head[1]) {
+            this.drawTitleHead(x, y, blockSize);
+          } else if (row === glyph.tail[0] && col === glyph.tail[1]) {
+            this.drawTitleTail(x, y, blockSize);
+          } else {
+            ctx.fillStyle = COLORS.snake;
+            ctx.fillRect(x, y, Math.max(1, blockSize - 1), Math.max(1, blockSize - 1));
+          }
+        }
+      }
+      cursorX += (letterCols + letterGap) * blockSize;
+    }
+
+    ctx.fillStyle = COLORS.white;
+    ctx.font = `bold ${subtitleFontSize}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(
+      "Press Enter to start a game",
+      origin.x + fieldW / 2,
+      startY + artH + gap + subtitleFontSize,
+    );
+    ctx.textAlign = "left";
+  }
+
+  /**
+   * Draws a title-screen letter's "head" pixel: bright block + a simple
+   * two-eye/mouth face, matching the in-game snake head's look.
+   */
+  private drawTitleHead(x: number, y: number, size: number): void {
+    const { ctx } = this;
+    const w = Math.max(1, size - 1);
+    ctx.fillStyle = COLORS.snakeBright;
+    ctx.fillRect(x, y, w, w);
+
+    ctx.fillStyle = COLORS.snakeDark;
+    const eyeSize = Math.max(1, Math.floor(w * 0.16));
+    const eyeY = y + Math.floor(w * 0.28);
+    ctx.fillRect(x + Math.floor(w * 0.22), eyeY, eyeSize, eyeSize);
+    ctx.fillRect(x + Math.floor(w * 0.62), eyeY, eyeSize, eyeSize);
+
+    const mouthW = Math.max(1, Math.floor(w * 0.4));
+    const mouthY = y + Math.floor(w * 0.62);
+    ctx.fillRect(x + Math.floor((w - mouthW) / 2), mouthY, mouthW, Math.max(1, Math.floor(w * 0.12)));
+  }
+
+  /**
+   * Draws a title-screen letter's "tail" pixel: two chevron notches on the
+   * background (not a solid block), matching the in-game snake tail's look.
+   * The letters' tails all sit at the bottom of a vertical stroke, so the
+   * body always continues upward from here.
+   */
+  private drawTitleTail(x: number, y: number, size: number): void {
+    const { ctx } = this;
+    const w = Math.max(1, size - 1);
+    const cx = x + w / 2;
+    const cy = y + w / 2;
+    const arm = w * 0.22;
+
+    ctx.fillStyle = COLORS.snake;
+    for (const offset of [-arm * 0.55, arm * 0.15]) {
+      const tipY = cy - (arm + offset);
+      ctx.beginPath();
+      ctx.moveTo(cx, tipY);
+      ctx.lineTo(cx - arm * 0.7, tipY + arm);
+      ctx.lineTo(cx + arm * 0.7, tipY + arm);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   /**

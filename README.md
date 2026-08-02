@@ -23,7 +23,7 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 ### Multiplayer
 
 - Online: server-authoritative WS; time + win bonuses like vs AI, but **deterministic** pellet/molt scoring (fixed molt at 20, fixed yellow value, no opponent-pellet subtraction — vs AI keeps the RNG); highest score wins; head-on → no win bonus; Ready toggles + countdown before start
-- **Elo** (start 1000, K=32): only updates when both players are verified (signed in) — a guest in the match never moves either side's rating. Verified players can flag a room **Ranked — verified players only**, which a guest can watch but not join, so it never ends up unrated
+- **Elo** (start 1000, K=32): only updates when both players are verified (signed in). A guest in the match never moves either side's rating. Verified players can flag a room **Ranked — verified players only**, which a guest can watch but not join, so it never ends up unrated
 - **Spectating**: anyone (guest or signed in) can watch any public room (Watch button, or by code); board updates live, read-only. Spectators can toggle "join if a seat opens" — if a player leaves once a match has started readying up, the first queued spectator takes their seat and the match restarts fresh (skipped for a guest spectating a ranked room)
 - **Standings sidebar**: live games-won tally per player plus a breakdown of the last finished game; tracked server-side per room (reset when the seat pairing changes, kept across a same-pair rematch) so it's correct even for a spectator who joins mid-session. Swaps in for the Scores leaderboard whenever you're in a multiplayer room
 

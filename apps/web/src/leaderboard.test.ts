@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getBoard,
   MAX_ENTRIES,
+  neighborRanks,
   periodStart,
   qualifiesForBoard,
   sanitizeName,
@@ -109,5 +110,34 @@ describe("getBoard / submitScore", () => {
     expect(qualifiesForBoard(100 - MAX_ENTRIES, "small", "solo")).toBe(false);
     expect(qualifiesForBoard(100, "small", "solo")).toBe(true);
     expect(qualifiesForBoard(-1, "small", "solo")).toBe(false);
+  });
+});
+
+describe("neighborRanks", () => {
+  it("returns nothing when the rank is already within the top N", () => {
+    expect(neighborRanks(5, 10, 50)).toEqual([]);
+    expect(neighborRanks(10, 10, 50)).toEqual([]);
+  });
+
+  it("returns rank-1, rank, rank+1 when past the top N", () => {
+    expect(neighborRanks(15, 10, 50)).toEqual([14, 15, 16]);
+  });
+
+  it("drops the neighbor already covered by the top N (rank = N+1)", () => {
+    expect(neighborRanks(11, 10, 50)).toEqual([11, 12]);
+  });
+
+  it("clamps at the bottom of the board (rank = total)", () => {
+    expect(neighborRanks(50, 10, 50)).toEqual([49, 50]);
+  });
+
+  it("clamps when rank+1 and the board's end coincide", () => {
+    expect(neighborRanks(49, 10, 50)).toEqual([48, 49, 50]);
+  });
+
+  it("handles a tiny/empty board where every rank is past N", () => {
+    expect(neighborRanks(1, 0, 1)).toEqual([1]);
+    // rank 1 is already covered by the top-1 board, so only rank 2 is extra.
+    expect(neighborRanks(2, 1, 2)).toEqual([2]);
   });
 });
