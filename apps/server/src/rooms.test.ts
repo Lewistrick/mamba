@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameState } from "@mamba/engine";
 import { RoomManager, type Room, type Seat } from "./rooms.ts";
 
-function seat(id: string, name: string): Seat {
+function seat(id: string, name: string, verified = true): Seat {
   return {
-    user: { userId: id, displayName: name },
+    user: { userId: id, displayName: name, verified },
     send: () => undefined,
   };
 }
@@ -451,6 +451,56 @@ describe("RoomManager", () => {
     // The stale timer must be cancelled, not just superseded.
     vi.advanceTimersByTime(5000);
     expect(expired).toHaveLength(0);
+  });
+
+  it("forces ranked false when the host isn't verified", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice", false), "medium", "public", true);
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(created.room.ranked).toBe(false);
+  });
+
+  it("rejects a guest joining a ranked room, but allows a verified player", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice", true), "medium", "public", true);
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    expect(created.room.ranked).toBe(true);
+    const guestJoin = mgr.join(seat("b", "Bob", false), created.room.code);
+    expect(guestJoin).toEqual({ ok: false, error: "This room is for verified players only" });
+    const verifiedJoin = mgr.join(seat("c", "Carol", true), created.room.code);
+    expect(verifiedJoin.ok).toBe(true);
+  });
+
+  it("lets a guest spectate a ranked room but rejects queueJoin", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice", true), "medium", "public", true);
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const room = created.room;
+    expect(mgr.addSpectator(room, seat("c", "Carol", false))).toBeNull();
+    expect(mgr.queueJoin(room, "c")).toBe("This room is for verified players only");
+    expect(room.joinQueue).toHaveLength(0);
+  });
+
+  it("lets a verified spectator queueJoin a ranked room", () => {
+    const mgr = new RoomManager();
+    const created = mgr.create(seat("a", "Alice", true), "medium", "public", true);
+    expect(created.ok).toBe(true);
+    if (!created.ok) {
+      return;
+    }
+    const room = created.room;
+    expect(mgr.addSpectator(room, seat("c", "Carol", true))).toBeNull();
+    expect(mgr.queueJoin(room, "c")).toBeNull();
+    expect(room.joinQueue).toHaveLength(1);
   });
 
   it("picks the higher score as winner", () => {

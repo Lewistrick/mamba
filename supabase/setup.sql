@@ -107,3 +107,19 @@ insert into public.profiles (id, display_name, username_set, elo)
 select id, 'AAA', false, 1000
 from auth.users
 on conflict (id) do nothing;
+
+-- Guest play: scores can belong to a guest (no account) instead of a user.
+alter table public.scores alter column user_id drop not null;
+
+alter table public.scores
+  add column if not exists guest_id uuid;
+
+alter table public.scores
+  drop constraint if exists scores_actor_present;
+alter table public.scores
+  add constraint scores_actor_present
+  check (user_id is not null or guest_id is not null);
+
+create index if not exists scores_guest_created_idx
+  on public.scores (guest_id, created_at desc)
+  where guest_id is not null;

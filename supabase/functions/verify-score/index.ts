@@ -43,22 +43,6 @@ Deno.serve(async (req) => {
     return json({ error: "server_misconfigured" }, 500);
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return json({ error: "unauthorized" }, 401);
-  }
-
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const {
-    data: { user },
-    error: userError,
-  } = await userClient.auth.getUser();
-  if (userError || !user) {
-    return json({ error: "unauthorized" }, 401);
-  }
-
   let body: {
     seed?: number;
     sizeId?: string;
@@ -68,6 +52,7 @@ Deno.serve(async (req) => {
     claimedScore?: number;
     claimedLevel?: number;
     displayName?: string;
+    guestId?: string;
   };
   try {
     body = await req.json();
@@ -75,10 +60,37 @@ Deno.serve(async (req) => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  const displayName = String(body.displayName ?? "AAA")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 12) || "AAA";
+  // Verified path: a real Supabase user JWT. Falls back to a guest identity
+  // (persisted client-side UUID + chosen name, no account) rather than
+  // 401ing outright — accounts are a trust badge here, not a play gate.
+  let actor: { verified: true; userId: string } | { verified: false; guestId: string };
+  const authHeader = req.headers.get("Authorization");
+  let verifiedUserId: string | null = null;
+  if (authHeader) {
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const {
+      data: { user },
+    } = await userClient.auth.getUser();
+    verifiedUserId = user?.id ?? null;
+  }
+  if (verifiedUserId) {
+    actor = { verified: true, userId: verifiedUserId };
+  } else {
+    const guestId = String(body.guestId ?? "");
+    if (!/^[0-9a-f-]{8,36}$/i.test(guestId)) {
+      return json({ error: "unauthorized" }, 401);
+    }
+    actor = { verified: false, guestId };
+  }
+
+  const displayName = actor.verified
+    ? String(body.displayName ?? "AAA").replace(/\s+/g, " ").trim().slice(0, 12) || "AAA"
+    : String(body.displayName ?? "").replace(/\s+/g, " ").trim().slice(0, 12);
+  if (!actor.verified && !displayName) {
+    return json({ error: "name_required" }, 400);
+  }
 
   const payload = {
     seed: Number(body.seed),
@@ -97,12 +109,33 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey);
 
+  if (!actor.verified) {
+    // Guests can't claim a name locked to a verified account.
+    const escaped = displayName.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+    const { data: reserved, error: reservedError } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("username_set", true)
+      .ilike("display_name", escaped)
+      .limit(1)
+      .maybeSingle();
+    if (reservedError) {
+      return json({ error: "name_check_failed" }, 500);
+    }
+    if (reserved) {
+      return json({ error: "name_taken" }, 409);
+    }
+  }
+
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count, error: countError } = await admin
+  let rateQuery = admin
     .from("scores")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
     .gte("created_at", hourAgo);
+  rateQuery = actor.verified
+    ? rateQuery.eq("user_id", actor.userId)
+    : rateQuery.eq("guest_id", actor.guestId);
+  const { count, error: countError } = await rateQuery;
   if (countError) {
     return json({ error: "rate_limit_check_failed" }, 500);
   }
@@ -110,10 +143,12 @@ Deno.serve(async (req) => {
     return json({ error: "rate_limited" }, 429);
   }
 
-  await admin.from("profiles").upsert({
-    id: user.id,
-    display_name: displayName,
-  });
+  if (actor.verified) {
+    await admin.from("profiles").upsert({
+      id: actor.userId,
+      display_name: displayName,
+    });
+  }
 
   const headingsStore = payload.headingsAi
     ? { human: payload.headings, ai: payload.headingsAi }
@@ -122,7 +157,8 @@ Deno.serve(async (req) => {
   const { data: row, error: insertError } = await admin
     .from("scores")
     .insert({
-      user_id: user.id,
+      user_id: actor.verified ? actor.userId : null,
+      guest_id: actor.verified ? null : actor.guestId,
       display_name: displayName,
       score: verified.score,
       level: verified.level,

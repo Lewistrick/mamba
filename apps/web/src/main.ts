@@ -16,8 +16,6 @@ import { SoundBoard } from "./audio.ts";
 import { fetchGlobalBoard, fetchGlobalStanding, submitGlobalScore } from "./globalLeaderboard.ts";
 import {
   getBoard,
-  MAX_ENTRIES,
-  qualifiesForBoard,
   sanitizeName,
   submitScore,
   type GameMode,
@@ -55,6 +53,7 @@ import {
   fetchMyScores,
   fetchProfile,
   getSession,
+  isDisplayNameReserved,
   setAccountUsername,
   signInWithMagicLink,
   signInWithPassword,
@@ -108,6 +107,8 @@ const lbPeriodSelect = document.querySelector<HTMLSelectElement>("#lb-period");
 const lbScopeSelect = document.querySelector<HTMLSelectElement>("#lb-scope");
 const lbList = document.querySelector<HTMLOListElement>("#lb-list");
 const lbEmpty = document.querySelector<HTMLElement>("#lb-empty");
+const lbHideGuestsField = document.querySelector<HTMLElement>("#lb-hide-guests-field");
+const lbHideGuests = document.querySelector<HTMLInputElement>("#lb-hide-guests");
 const scoresPanel = document.querySelector<HTMLElement>("#scores");
 const mpStandingsPanel = document.querySelector<HTMLElement>("#mp-standings");
 const mpStandingsNameA = document.querySelector<HTMLElement>("#mp-standings-name-a");
@@ -143,10 +144,11 @@ const goMpResult = document.querySelector<HTMLElement>("#go-mp-result");
 const goMpTable = document.querySelector<HTMLTableElement>("#go-mp-table");
 const goMpElo = document.querySelector<HTMLElement>("#go-mp-elo");
 const goSaveStatus = document.querySelector<HTMLElement>("#go-save-status");
-const goTooLow = document.querySelector<HTMLElement>("#go-too-low");
-const goAccountCta = document.querySelector<HTMLElement>("#go-account-cta");
-const guestScoreForm = document.querySelector<HTMLFormElement>("#guest-score-form");
-const guestNameInput = document.querySelector<HTMLInputElement>("#guest-name");
+const guestGate = document.querySelector<HTMLElement>("#guest-gate");
+const guestGateForm = document.querySelector<HTMLFormElement>("#guest-gate-form");
+const guestGateNameInput = document.querySelector<HTMLInputElement>("#guest-gate-name");
+const guestGateMsg = document.querySelector<HTMLElement>("#guest-gate-msg");
+const guestChangeNameBtn = document.querySelector<HTMLButtonElement>("#btn-guest-change-name");
 const playAgainBtn = document.querySelector<HTMLButtonElement>("#btn-play-again");
 const playAgainWait = document.querySelector<HTMLElement>("#go-play-again-wait");
 const leaveRoomBtn = document.querySelector<HTMLButtonElement>("#btn-leave-room");
@@ -158,6 +160,7 @@ const profilePage = document.querySelector<HTMLElement>("#profile-page");
 const helpPage = document.querySelector<HTMLElement>("#help-page");
 const helpBackBtn = document.querySelector<HTMLButtonElement>("#btn-help-back");
 const mpPage = document.querySelector<HTMLElement>("#mp-page");
+const mpRankedField = document.querySelector<HTMLElement>("#mp-ranked-field");
 const profileBackBtn = document.querySelector<HTMLButtonElement>("#btn-profile-back");
 const profileUsernameForm = document.querySelector<HTMLFormElement>("#profile-username-form");
 const profileUsernameInput = document.querySelector<HTMLInputElement>("#profile-username");
@@ -186,6 +189,8 @@ if (
   !lbScopeSelect ||
   !lbList ||
   !lbEmpty ||
+  !lbHideGuestsField ||
+  !lbHideGuests ||
   !scoresPanel ||
   !mpStandingsPanel ||
   !mpStandingsNameA ||
@@ -217,10 +222,11 @@ if (
   !goMpTable ||
   !goMpElo ||
   !goSaveStatus ||
-  !goTooLow ||
-  !goAccountCta ||
-  !guestScoreForm ||
-  !guestNameInput ||
+  !guestGate ||
+  !guestGateForm ||
+  !guestGateNameInput ||
+  !guestGateMsg ||
+  !guestChangeNameBtn ||
   !playAgainBtn ||
   !playAgainWait ||
   !leaveRoomBtn ||
@@ -231,6 +237,7 @@ if (
   !helpPage ||
   !helpBackBtn ||
   !mpPage ||
+  !mpRankedField ||
   !profileBackBtn ||
   !profileUsernameForm ||
   !profileUsernameInput ||
@@ -259,6 +266,8 @@ const periodSelect = lbPeriodSelect;
 const scopeSelect = lbScopeSelect;
 const listEl = lbList;
 const emptyEl = lbEmpty;
+const lbHideGuestsFieldEl = lbHideGuestsField;
+const lbHideGuestsEl = lbHideGuests;
 const scoresPanelEl = scoresPanel;
 const mpStandingsPanelEl = mpStandingsPanel;
 const mpStandingsNameAEl = mpStandingsNameA;
@@ -289,10 +298,11 @@ const goMpResultEl = goMpResult;
 const goMpTableEl = goMpTable;
 const goMpEloEl = goMpElo;
 const goSaveStatusEl = goSaveStatus;
-const goTooLowEl = goTooLow;
-const goAccountCtaEl = goAccountCta;
-const guestFormEl = guestScoreForm;
-const guestNameEl = guestNameInput;
+const guestGateEl = guestGate;
+const guestGateFormEl = guestGateForm;
+const guestGateNameEl = guestGateNameInput;
+const guestGateMsgEl = guestGateMsg;
+const guestChangeNameEl = guestChangeNameBtn;
 const playAgainEl = playAgainBtn;
 const playAgainWaitEl = playAgainWait;
 const leaveRoomEl = leaveRoomBtn;
@@ -303,6 +313,7 @@ const profilePageEl = profilePage;
 const helpPageEl = helpPage;
 const helpBackEl = helpBackBtn;
 const mpPageEl = mpPage!;
+const mpRankedFieldEl = mpRankedField;
 const profileBackEl = profileBackBtn;
 const profileUsernameFormEl = profileUsernameForm;
 const profileUsernameEl = profileUsernameInput;
@@ -367,9 +378,9 @@ let predictedDirection: Direction = "Right";
 let predictedQueue: Direction[] = [];
 /** Wall-clock time of the last authoritative multiplayer match update, for opponent staleness dimming. */
 let lastMpStateAt = performance.now();
-let pendingScore: PendingScore | null = null;
-let scoreSaved = false;
 let signedInEmail: string | null = null;
+/** True while the guest name gate is shown voluntarily (via "Change name"), not because it's required. */
+let guestGateOpen = false;
 let profile: Profile | null = null;
 let profileStatRows: StatRow[] = [];
 let selectedStatKey: string | null = null;
@@ -559,7 +570,6 @@ const mpLobby = new MpLobbyController(mpPageEl, {
       mpResultText(names, youIndex, winnerIndex),
     );
     overlayEl.hidden = false;
-    guestFormEl.hidden = true;
     leaveRoomEl.hidden = false;
     setGoSaveStatus(null);
     setStatus(
@@ -642,7 +652,6 @@ const mpLobby = new MpLobbyController(mpPageEl, {
       mpSpectateResultText(names, winnerIndex),
     );
     overlayEl.hidden = false;
-    guestFormEl.hidden = true;
     playAgainEl.hidden = true;
     playAgainWaitEl.hidden = true;
     leaveRoomEl.hidden = true;
@@ -692,6 +701,12 @@ const mpLobby = new MpLobbyController(mpPageEl, {
     mpStandingsTableEl.hidden = false;
     buildStandingsTable(mpStandingsTableEl, rows, youWins, oppWins);
   },
+  getGuestIdentity: () => {
+    if (!settings.hasChosenName) {
+      return null;
+    }
+    return { guestId: settings.guestId, displayName: settings.playerName };
+  },
 });
 
 /**
@@ -721,6 +736,27 @@ function needsUsername(): boolean {
 }
 
 /**
+ * Whether a guest must choose a name before Play/Multiplayer unlock.
+ * Signed-in accounts never hit this — they're gated by needsUsername instead.
+ */
+function guestGateRequired(): boolean {
+  return !signedInEmail && !settings.hasChosenName;
+}
+
+/**
+ * Shows/hides the pre-play guest name gate: required (blocking) when a
+ * guest hasn't chosen a name yet, or voluntarily reopened via "Change name".
+ */
+function syncGuestGate(): void {
+  const show = guestGateRequired() || guestGateOpen;
+  guestGateEl.hidden = !show;
+  if (show) {
+    guestGateNameEl.value = settings.playerName;
+    setProfileMsg(guestGateMsgEl, null);
+  }
+}
+
+/**
  * Applies persisted settings to the menu controls.
  */
 function syncMenuFromSettings(): void {
@@ -735,8 +771,9 @@ function syncMenuFromSettings(): void {
   }
   aiDifficultyFieldEl.hidden = settings.playMode !== "ai";
   sounds.setMuted(!settings.soundEnabled);
-  guestNameEl.value = settings.playerName;
+  guestGateNameEl.value = settings.playerName;
   scopeSelect.value = settings.leaderboardScope;
+  lbHideGuestsEl.checked = settings.hideGuestScores;
 }
 
 /**
@@ -895,10 +932,18 @@ function setStatus(text: string): void {
  * Enables/disables Play based on username gate.
  */
 function syncPlayButton(): void {
-  const blocked = needsUsername();
+  syncGuestGate();
+  const blocked = needsUsername() || guestGateRequired();
+  const title = needsUsername()
+    ? "Set a username first"
+    : guestGateRequired()
+      ? "Choose a name first"
+      : "";
   playBtn.disabled = blocked;
-  playBtn.title = blocked ? "Set a username first" : "";
-  multiplayerBtnEl.hidden = !signedInEmail;
+  playBtn.title = title;
+  multiplayerBtnEl.hidden = false;
+  multiplayerBtnEl.disabled = blocked;
+  multiplayerBtnEl.title = title;
 }
 
 /**
@@ -917,7 +962,7 @@ function renderBoard(board: ScoreEntry[]): void {
   board.forEach((row, index) => {
     const li = document.createElement("li");
     li.innerHTML = `<span class="rank">${index + 1}.</span><span class="name"></span><span class="score"></span>`;
-    li.querySelector(".name")!.textContent = row.name;
+    li.querySelector(".name")!.textContent = row.verified ? `✓ ${row.name}` : row.name;
     li.querySelector(".score")!.textContent = String(row.score);
     listEl.append(li);
   });
@@ -931,6 +976,7 @@ async function refreshLeaderboard(): Promise<void> {
   const period = selectedPeriod();
   const mode = currentMode();
   const scope = selectedScope();
+  lbHideGuestsFieldEl.hidden = scope !== "global";
 
   if (scope === "local") {
     renderBoard(getBoard(sizeId, mode, period));
@@ -947,7 +993,7 @@ async function refreshLeaderboard(): Promise<void> {
   emptyEl.hidden = false;
   emptyEl.textContent = "Loading…";
   listEl.replaceChildren();
-  const board = await fetchGlobalBoard(sizeId, mode, period);
+  const board = await fetchGlobalBoard(sizeId, mode, period, settings.hideGuestScores);
   renderBoard(board);
 }
 
@@ -1022,7 +1068,11 @@ async function refreshAuthUi(): Promise<void> {
   profile = signedInEmail ? await fetchProfile() : null;
 
   if (!signedInEmail) {
-    authStatusEl.textContent = "Guest — local scores only";
+    authStatusEl.textContent = settings.hasChosenName
+      ? `Guest — playing as "${settings.playerName}"`
+      : "Guest — choose a name to play";
+    guestChangeNameEl.hidden = !settings.hasChosenName;
+    mpRankedFieldEl.hidden = true;
     authFormEl.hidden = false;
     syncMagicLinkButton();
     syncPlayButton();
@@ -1032,6 +1082,8 @@ async function refreshAuthUi(): Promise<void> {
     return;
   }
 
+  guestChangeNameEl.hidden = true;
+  mpRankedFieldEl.hidden = false;
   signOutEl.hidden = false;
   profileBtnEl.hidden = false;
 
@@ -1098,12 +1150,12 @@ function openMultiplayerPage(): void {
     );
     return;
   }
-  if (!signedInEmail) {
-    setStatus("Sign in under Account (below Multiplayer), then try again");
-    authFormEl.hidden = false;
-    authEl.hidden = false;
-    authEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    authEmailEl.focus();
+  if (guestGateRequired()) {
+    setStatus("Choose a name to play online, then try again");
+    guestGateOpen = true;
+    syncGuestGate();
+    guestGateEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    guestGateNameEl.focus();
     return;
   }
   if (needsUsername()) {
@@ -1322,56 +1374,26 @@ function setGoSaveStatus(text: string | null, kind: "ok" | "error" | "pending" =
  */
 function hideGameOverOverlay(): void {
   overlayEl.hidden = true;
-  guestFormEl.hidden = true;
-  goTooLowEl.hidden = true;
-  goAccountCtaEl.hidden = true;
-  authEl.classList.remove("cta-highlight");
   leaveRoomEl.hidden = true;
   playAgainEl.hidden = false;
   playAgainWaitEl.hidden = true;
   goMpSummaryEl.hidden = true;
   goScoreEl.hidden = false;
   setGoSaveStatus(null);
-  pendingScore = null;
-  scoreSaved = false;
 }
 
 /**
  * Shows the game-over overlay over the playfield.
  *
  * @param pending - Score + replay payload.
- * @param mode - Guest name entry, guest score too low for the local board, or
- * signed-in auto result.
  */
-function showGameOverOverlay(
-  pending: PendingScore,
-  mode: "guest" | "guest-too-low" | "account",
-): void {
-  pendingScore = pending;
-  scoreSaved = false;
+function showGameOverOverlay(pending: PendingScore): void {
   overlayEl.hidden = false;
   leaveRoomEl.hidden = true;
   goMpSummaryEl.hidden = true;
   goScoreEl.hidden = false;
   goScoreEl.textContent = `Score: ${pending.score}`;
-  goAccountCtaEl.hidden = mode === "account";
-  if (mode === "guest") {
-    setGoSaveStatus(null);
-    goTooLowEl.hidden = true;
-    guestFormEl.hidden = false;
-    guestNameEl.value = settings.playerName;
-    guestNameEl.focus();
-    guestNameEl.select();
-  } else if (mode === "guest-too-low") {
-    setGoSaveStatus(null);
-    guestFormEl.hidden = true;
-    goTooLowEl.hidden = false;
-    goTooLowEl.textContent = `Score too low for the local leaderboard (top ${MAX_ENTRIES})`;
-  } else {
-    guestFormEl.hidden = true;
-    goTooLowEl.hidden = true;
-    setGoSaveStatus("Saving score…", "pending");
-  }
+  setGoSaveStatus("Saving score…", "pending");
 }
 
 /**
@@ -1489,43 +1511,20 @@ function renderMpGameOver(
 }
 
 /**
- * Saves a guest local high score from the overlay form.
- *
- * @returns True if saved.
- */
-async function saveGuestScore(): Promise<boolean> {
-  if (!pendingScore || scoreSaved) {
-    return false;
-  }
-  const name = sanitizeName(guestNameEl.value);
-  guestNameEl.value = name;
-  settings.playerName = name;
-  saveSettings(settings);
-
-  const { rank } = submitScore({
-    name,
-    score: pendingScore.score,
-    level: pendingScore.level,
-    sizeId: pendingScore.sizeId,
-    mode: pendingScore.mode,
-    createdAt: Date.now(),
-  });
-  scoreSaved = true;
-  guestFormEl.hidden = true;
-  const message = rank !== null ? `Saved — rank #${rank}` : "Saved";
-  setGoSaveStatus(message, "ok");
-  setStatus(message);
-  await refreshLeaderboard();
-  return true;
-}
-
-/**
- * Auto-saves a signed-in run to local + global boards.
+ * Saves a run to local + global boards under the given display name, then
+ * reports the resulting global standing. Shared by the signed-in and guest
+ * auto-save paths — they differ only in where the name comes from and
+ * whether a guestId accompanies the global submission.
  *
  * @param pending - Score + replay payload.
+ * @param name - Sanitized display name to save under.
+ * @param guestId - Persisted guest id, or undefined for a signed-in submit.
  */
-async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
-  const name = sanitizeName(profile?.displayName ?? "AAA");
+async function autoSaveScore(
+  pending: PendingScore,
+  name: string,
+  guestId?: string,
+): Promise<void> {
   submitScore({
     name,
     score: pending.score,
@@ -1534,7 +1533,6 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
     mode: pending.mode,
     createdAt: Date.now(),
   });
-  scoreSaved = true;
 
   const { error } = await submitGlobalScore({
     seed: pending.seed,
@@ -1545,6 +1543,7 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
     claimedScore: pending.score,
     claimedLevel: pending.level,
     displayName: name,
+    guestId,
   });
 
   if (error) {
@@ -1574,6 +1573,24 @@ async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
   setGoSaveStatus(message, "ok");
   setStatus(lines[0] ?? message);
   await refreshLeaderboard();
+}
+
+/**
+ * Auto-saves a signed-in run to local + global boards.
+ *
+ * @param pending - Score + replay payload.
+ */
+async function autoSaveAccountScore(pending: PendingScore): Promise<void> {
+  await autoSaveScore(pending, sanitizeName(profile?.displayName ?? "AAA"));
+}
+
+/**
+ * Auto-saves a guest run to local + global boards under their chosen name.
+ *
+ * @param pending - Score + replay payload.
+ */
+async function autoSaveGuestScore(pending: PendingScore): Promise<void> {
+  await autoSaveScore(pending, sanitizeName(settings.playerName), settings.guestId);
 }
 
 /**
@@ -1648,6 +1665,13 @@ function startGame(): void {
     accountUsernameEl.focus();
     return;
   }
+  if (guestGateRequired()) {
+    setStatus("Choose a name before playing");
+    guestGateOpen = true;
+    syncGuestGate();
+    guestGateNameEl.focus();
+    return;
+  }
   if (screen === "profile" || screen === "help" || screen === "multiplayer") {
     showGameShell();
   }
@@ -1712,14 +1736,13 @@ function onGameOver(final: GameState, run: Game): void {
     final.players.length > 1 ? `Net ${score}` : `Score ${score}`;
 
   if (signedInEmail && profile?.usernameSet) {
-    showGameOverOverlay(pending, "account");
+    showGameOverOverlay(pending);
     goScoreEl.textContent = summary;
     void autoSaveAccountScore(pending);
   } else if (!signedInEmail) {
-    const qualifies = qualifiesForBoard(score, sizeId, mode);
-    showGameOverOverlay(pending, qualifies ? "guest" : "guest-too-low");
+    showGameOverOverlay(pending);
     goScoreEl.textContent = summary;
-    setStatus(shortStatus);
+    void autoSaveGuestScore(pending);
   } else {
     hideGameOverOverlay();
     setStatus(shortStatus);
@@ -2005,16 +2028,49 @@ playAgainEl.addEventListener("click", () => {
 leaveRoomEl.addEventListener("click", leaveMultiplayerRoom);
 mpReadyLeaveEl.addEventListener("click", leaveMultiplayerRoom);
 
-guestFormEl.addEventListener("submit", (event) => {
+guestGateFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
-  void saveGuestScore();
+  void (async () => {
+    const name = sanitizeName(guestGateNameEl.value);
+    guestGateNameEl.value = name;
+    if (!name) {
+      setProfileMsg(guestGateMsgEl, "Choose a name before playing", "error");
+      return;
+    }
+    const submitBtn = guestGateFormEl.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+    setProfileMsg(guestGateMsgEl, "Checking name…", "ok");
+    try {
+      if (await isDisplayNameReserved(name)) {
+        setProfileMsg(
+          guestGateMsgEl,
+          "That name is taken by a verified player — choose another",
+          "error",
+        );
+        return;
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+      }
+    }
+    settings.playerName = name;
+    settings.hasChosenName = true;
+    saveSettings(settings);
+    guestGateOpen = false;
+    syncGuestGate();
+    syncPlayButton();
+    void refreshAuthUi();
+  })();
 });
 
-goAccountCtaEl.addEventListener("mouseenter", () => {
-  authEl.classList.add("cta-highlight");
-});
-goAccountCtaEl.addEventListener("mouseleave", () => {
-  authEl.classList.remove("cta-highlight");
+guestChangeNameEl.addEventListener("click", () => {
+  guestGateOpen = true;
+  syncGuestGate();
+  guestGateNameEl.focus();
+  guestGateNameEl.select();
 });
 
 periodSelect.addEventListener("change", () => {
@@ -2023,6 +2079,12 @@ periodSelect.addEventListener("change", () => {
 
 scopeSelect.addEventListener("change", () => {
   persistFromMenu();
+  void refreshLeaderboard();
+});
+
+lbHideGuestsEl.addEventListener("change", () => {
+  settings.hideGuestScores = lbHideGuestsEl.checked;
+  saveSettings(settings);
   void refreshLeaderboard();
 });
 

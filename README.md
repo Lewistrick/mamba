@@ -17,19 +17,27 @@ Unlike classic Snake, your mamba **molts**: after eating enough pellets it sheds
 - Deterministic headless engine with **replay verification** (solo + AI + online)
 - Field sizes S/M/L, HTML menu, live rescale, sound (S), pause (P; disabled in online)
 - **Help** page (menu): remake story plus controls, scoring, and modes
-- Preferences in `localStorage`; guest play always works offline (online requires account)
-- **Solo**, **vs AI** (easy / medium / hard), or **online 1v1** (room codes; public/private)
+- Preferences in `localStorage`; guests pick a name once (before playing anything) and it's reused everywhere — no account required for any mode
+- **Solo**, **vs AI** (easy / medium / hard), or **online 1v1** (room codes; public/private) — all playable as a guest or signed in
 
 ### Multiplayer
 
-- Online: server-authoritative WS; time + win bonuses like vs AI, but **deterministic** pellet/molt scoring (fixed molt at 20, fixed yellow value, no opponent-pellet subtraction — vs AI keeps the RNG); highest score wins; head-on → no win bonus; Ready toggles + countdown before start; **Elo** (start 1000, K=32) updated after each match
-- **Spectating**: signed-in users can watch any public room (Watch button, or by code); board updates live, read-only. Spectators can toggle "join if a seat opens" — if a player leaves once a match has started readying up, the first queued spectator takes their seat and the match restarts fresh
+- Online: server-authoritative WS; time + win bonuses like vs AI, but **deterministic** pellet/molt scoring (fixed molt at 20, fixed yellow value, no opponent-pellet subtraction — vs AI keeps the RNG); highest score wins; head-on → no win bonus; Ready toggles + countdown before start
+- **Elo** (start 1000, K=32): only updates when both players are verified (signed in) — a guest in the match never moves either side's rating. Verified players can flag a room **Ranked — verified players only**, which a guest can watch but not join, so it never ends up unrated
+- **Spectating**: anyone (guest or signed in) can watch any public room (Watch button, or by code); board updates live, read-only. Spectators can toggle "join if a seat opens" — if a player leaves once a match has started readying up, the first queued spectator takes their seat and the match restarts fresh (skipped for a guest spectating a ranked room)
 - **Standings sidebar**: live games-won tally per player plus a breakdown of the last finished game; tracked server-side per room (reset when the seat pairing changes, kept across a same-pair rematch) so it's correct even for a spectator who joins mid-session. Swaps in for the Scores leaderboard whenever you're in a multiplayer room
 
 ### Accounts & scores
 
-- **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period (`mp` for multiplayer nets)
+- **Local + global leaderboards** filtered by board size, play mode (menu), scope, and period (`mp` for multiplayer nets); global board has a **Verified players only** filter and shows a ✓ next to verified names
 - Signed-in **Profile** page: Elo rating; change username/password; play counts per size/mode; click a row for score-over-time chart (dots + 10-game rolling average; X axis by date or evenly by game)
+
+### Guests vs. verified accounts
+
+Anonymous "guest" play works everywhere — no account needed for solo, vs AI, online 1v1, or the global leaderboard. A guest just picks a name once (persisted locally, reused every visit) before playing. Signing in adds a **verified** badge and a few perks:
+
+- **Reserved, locked display name** — once you sign in and set a username, no guest can ever claim it (checked server-side on every guest name choice and score submission)
+- **Persistent Elo + ranked-only matchmaking** — Elo only moves between two verified players; the **Ranked** room toggle guarantees your opponent is verified too, so a match is never a surprise unrated game
 
 See [`.claude/plans/mamba-full-implementation-plan.md`](.claude/plans/mamba-full-implementation-plan.md), [`.claude/plans/phase-6-multiplayer.md`](.claude/plans/phase-6-multiplayer.md), and [`.claude/plans/phase-7-spectating.md`](.claude/plans/phase-7-spectating.md).
 
@@ -120,7 +128,9 @@ Optional. Without config, everything works offline.
 5. Add Auth redirect URLs: `http://localhost:5173` (dev) and `https://lewistrick.com/mamba/` (production)
 6. Under **Authentication → Providers → Email**, keep Email enabled and **disable Confirm email** (free built-in mailer is limited to ~2 emails/hour; password signup then works immediately)
 
-Auth is **email + password** (magic link is optional). After sign-in, choose a **username once** before Play; that name is locked for global scores. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score`.
+Auth is **email + password** (magic link is optional). After sign-in, choose a **username once**; that name is locked for global scores and can never be claimed by a guest. Raw `{score}` posts are rejected — the server re-simulates your replay via `verify-score` (guests submit too, identified by a persisted local id instead of a session).
+
+Upgrading an existing deployment for guest play: re-run [`supabase/setup.sql`](supabase/setup.sql) (it's idempotent — safe to run again, only adds the new nullable `guest_id` column and drops the `user_id` NOT NULL constraint) and redeploy the edge function: `npx supabase functions deploy verify-score`.
 
 **Optional later:** custom SMTP via Proton — see [`.claude/plans/phase-proton-smtp.md`](.claude/plans/phase-proton-smtp.md) (needs a custom domain address, not just a paid `@proton.me` account). Then re-enable Confirm email under **Authentication → Providers → Email** if you want verified addresses.
 

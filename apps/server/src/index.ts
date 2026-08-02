@@ -8,6 +8,7 @@ import type { Direction, FieldSizeId, GameState } from "@mamba/engine";
 import { versusNetScore } from "@mamba/engine";
 import { Hono } from "hono";
 import {
+  authenticateGuest,
   authenticatePlayer,
   createSupabaseAdmin,
   fetchElos,
@@ -183,7 +184,14 @@ async function handleGameOverAsync(room: Room, state: GameState): Promise<void> 
 
   const seat0 = seats[0];
   const seat1 = seats[1];
-  if (!room.eloApplied && supabase && seat0 && seat1) {
+  if (
+    !room.eloApplied &&
+    supabase &&
+    seat0 &&
+    seat1 &&
+    seat0.user.verified &&
+    seat1.user.verified
+  ) {
     room.eloApplied = true;
     const [ratingA, ratingB] = await fetchElos(
       supabase,
@@ -245,7 +253,8 @@ async function handleGameOverAsync(room: Room, state: GameState): Promise<void> 
         continue;
       }
       rows.push({
-        userId: seat.user.userId,
+        userId: seat.user.verified ? seat.user.userId : null,
+        guestId: seat.user.verified ? null : seat.user.userId,
         displayName: seat.user.displayName,
         score: versusNetScore(player, opponent, true),
         level: player.level,
@@ -376,6 +385,44 @@ function afterReadyChange(room: Room): void {
   }, COUNTDOWN_SEQUENCE_MS);
 }
 
+/**
+ * Finishes an auth/guest_auth handshake: replies auth_ok, then re-attaches
+ * to a seat this identity disconnected from mid-match, if any.
+ *
+ * @param user - Newly authenticated identity.
+ * @param sendFn - Raw sender for this socket, or null if the socket hasn't opened yet.
+ * @param reply - Typed reply helper for the triggering message.
+ */
+function completeAuth(
+  user: MpUser,
+  sendFn: ((data: string) => void) | null,
+  reply: (m: ServerMessage) => void,
+): void {
+  reply({
+    type: "auth_ok",
+    userId: user.userId,
+    displayName: user.displayName,
+    verified: user.verified,
+  });
+  if (!sendFn) {
+    return;
+  }
+  const seated = rooms.findSeat(user.userId);
+  if (seated && seated.room.disconnected[seated.index]) {
+    const seat: Seat = { user, send: sendFn };
+    const reattached = rooms.reattachSeat(user.userId, seat);
+    if (reattached) {
+      reply({
+        type: "reconnected",
+        youIndex: reattached.index,
+        room: rooms.snapshot(reattached.room, user.userId),
+      });
+      broadcastRoom(reattached.room);
+      sendCatchUp(reattached.room, reattached.index, seat);
+    }
+  }
+}
+
 app.get(
   "/ws",
   upgradeWebSocket(() => {
@@ -425,30 +472,29 @@ app.get(
               return;
             }
             user = result.user;
-            reply({
-              type: "auth_ok",
-              userId: user.userId,
-              displayName: user.displayName,
-            });
+            completeAuth(user, sendFn, reply);
+            return;
+          }
 
-            // Re-attach to a seat this user disconnected from mid-match,
-            // rather than leaving them stranded in the lobby.
-            if (sendFn) {
-              const seated = rooms.findSeat(user.userId);
-              if (seated && seated.room.disconnected[seated.index]) {
-                const seat: Seat = { user, send: sendFn };
-                const reattached = rooms.reattachSeat(user.userId, seat);
-                if (reattached) {
-                  reply({
-                    type: "reconnected",
-                    youIndex: reattached.index,
-                    room: rooms.snapshot(reattached.room, user.userId),
-                  });
-                  broadcastRoom(reattached.room);
-                  sendCatchUp(reattached.room, reattached.index, seat);
-                }
-              }
+          if (msg.type === "guest_auth") {
+            if (!supabase) {
+              reply({
+                type: "error",
+                message: "Server missing SUPABASE_URL / key env",
+              });
+              return;
             }
+            const result = await authenticateGuest(
+              supabase,
+              msg.guestId,
+              msg.displayName,
+            );
+            if ("error" in result) {
+              reply({ type: "error", message: result.error });
+              return;
+            }
+            user = result.user;
+            completeAuth(user, sendFn, reply);
             return;
           }
 
@@ -465,7 +511,12 @@ app.get(
               const visibility: RoomVisibility =
                 msg.visibility === "private" ? "private" : "public";
               const sizeId = msg.sizeId as FieldSizeId;
-              const created = rooms.create(seat, sizeId, visibility);
+              const created = rooms.create(
+                seat,
+                sizeId,
+                visibility,
+                Boolean(msg.ranked),
+              );
               if (!created.ok) {
                 reply({ type: "error", message: created.error });
                 return;

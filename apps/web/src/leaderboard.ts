@@ -24,6 +24,8 @@ export interface ScoreEntry {
   mode: GameMode;
   /** Epoch milliseconds when the run ended. */
   createdAt: number;
+  /** Global rows only: true for a verified (signed-in) player, false for a guest. */
+  verified?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
